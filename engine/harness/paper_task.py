@@ -186,6 +186,7 @@ def run_paper(
     model: Optional[str] = None,
     max_turns: int = 40,
     compile_at_end: bool = False,
+    min_full_score: Optional[int] = None,
     progress: Optional[Callable[[str], None]] = None,
 ) -> PaperResult:
     """Orchestrate a full paper run. Never raises — all failures land in the result."""
@@ -203,6 +204,7 @@ def run_paper(
         _say(f"warning: {msg}")
 
     consumed = 0.0
+    no_cost_sessions: List[str] = []
 
     def _session_cap(phase_cost: float) -> float:
         return min(phase_cost, budget.total_cost - consumed)
@@ -222,6 +224,8 @@ def run_paper(
             result.journal_paths.append(result_.journal_path)
         if result_.budget_exceeded:
             _warn(f"session '{name}' exceeded its budget ({result_.reason})")
+        if not (result_.stats or {}).get("cost"):
+            no_cost_sessions.append(name)
 
     # ------------------------------------------------------------ 1. plan
     if sections is not None:
@@ -286,8 +290,10 @@ def run_paper(
             review_text = settled
             result.review_ok = True
         elif run_result.ok:
+            result.ok = False
             _warn("review settled but produced no text — treating as failed review")
         else:
+            result.ok = False
             _warn(f"review failed: {run_result.reason}")
 
     issues = parse_global_issues(review_text)
@@ -299,15 +305,18 @@ def run_paper(
         groups, notes = _group_issues_by_section(issues, planned)
         for note in notes:
             _warn(note)
+        confirmed: set = set()
         fix_budget_done = False
         for _rnd in range(budget.max_fix_rounds):
             if fix_budget_done:
                 break
-            for section, sec_issues in groups.items():
-                if section in result.issues_fixed_report:
-                    continue  # one session per section across rounds
+            pending = {s: ii for s, ii in groups.items() if s not in confirmed}
+            if not pending:
+                break
+            for section, sec_issues in pending.items():
                 if not (root / SECTION_FILES[section]["file"]).exists():
                     result.issues_fixed_report[section] = "skipped: no section file on disk"
+                    confirmed.add(section)  # nothing a fix session can act on
                     continue
                 cap = _session_cap(budget.fix_cost)
                 if cap <= 0:
@@ -319,14 +328,37 @@ def run_paper(
                     build_fix_prompt(root, section, sec_issues), name=f"fix-{section}"
                 )
                 _record(run_result, f"fix-{section}")
-                if run_result.ok:
-                    result.issues_fixed_report[section] = (
-                        run_result.settled_text or "(no report text)"
-                    )
-                    _say(f"fix {section}: session done ({len(sec_issues)} issue(s))")
-                else:
-                    result.issues_fixed_report[section] = f"session failed: {run_result.reason}"
-                    _warn(f"fix {section} failed: {run_result.reason}")
+                report = (
+                    run_result.settled_text or "(no report text)"
+                    if run_result.ok else f"session failed: {run_result.reason}"
+                )
+                # Close the loop on disk truth, not self-report: re-score the section
+                # after the fix and only confirm when it actually passes.
+                try:
+                    from agent_tools.score import run as score_run
+
+                    verdict = score_run({"scope": "section", "section": section}, root)
+                    if verdict.get("ok"):
+                        passed = bool(verdict["data"].get("passed"))
+                        rescore = f"re-score: {'pass' if passed else 'FAIL'}"
+                        if passed:
+                            confirmed.add(section)
+                    else:
+                        rescore = f"re-score failed: {verdict.get('error')}"
+                except Exception as e:
+                    rescore = f"re-score error: {type(e).__name__}: {e}"
+                result.issues_fixed_report[section] = f"{report} | {rescore}"
+                _say(f"fix {section}: {rescore} ({len(sec_issues)} issue(s))")
+        for section in groups:
+            if section in confirmed:
+                continue
+            note = result.issues_fixed_report.get(section, "")
+            if str(note).startswith("skipped"):
+                continue
+            gap = f"section {section} still failing re-score after fix round(s)"
+            result.finish_gaps.append(gap)
+            result.ok = False
+            _warn(f"fix: {gap}")
 
     # ---------------------------------------------------- 5. full-score acceptance
     try:
@@ -341,15 +373,16 @@ def run_paper(
     except Exception as e:
         _warn(f"full scoring error: {type(e).__name__}: {e}")
 
-    # ------------------------------------------ 5b. finish acceptance (M3 T8)
+    # ------------------------------------------ 5b. finish acceptance (M3 T8, M5 hardened)
     try:
         from harness.acceptance import run_finish_acceptance
 
-        gate = run_finish_acceptance(root)
+        gate = run_finish_acceptance(root, min_full_score=min_full_score,
+                                     full_score=result.full_score)
         result.claims_clean = gate.claims_clean
         result.forbidden_hits = len(gate.forbidden_hits)
         result.citation_rate = gate.citation_rate
-        result.finish_gaps = list(gate.gaps)
+        result.finish_gaps = list(gate.gaps) + result.finish_gaps  # keep fix-loop gaps
         if gate.gaps:
             for g in gate.gaps:
                 _warn(f"finish: {g}")
@@ -360,6 +393,12 @@ def run_paper(
             _say("finish gate: pass")
     except Exception as e:
         _warn(f"finish acceptance error: {type(e).__name__}: {e}")
+
+    if no_cost_sessions:
+        _warn(
+            f"{len(no_cost_sessions)} session(s) reported no cost "
+            f"({', '.join(no_cost_sessions[:5])}) — cost breakers were blind there"
+        )
 
     # ------------------------------------------ 5c. distill lessons (M4)
     try:

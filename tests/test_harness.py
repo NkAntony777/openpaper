@@ -239,7 +239,7 @@ def test_event_loop_turns_budget(tmp_path, journal):
     )
 
     assert state.budget_exceeded is True
-    assert state.budget_reason == "turns>2"
+    assert state.budget_reason == "turns>=2"
     assert state.turns == 3
     assert len(feed.commands_of("steer")) == 1
     assert len(feed.commands_of("abort")) == 1
@@ -1096,7 +1096,7 @@ def test_run_paper_unknown_sections_dropped(tmp_path):
         budget=PaperBudget(),
     )
     assert calls == ["section-introduction", "global-review"]
-    assert result.ok is True
+    assert result.ok is False  # review produced no text (M5); warning still recorded
     assert any("not_a_section" in w for w in result.warnings)
 
 
@@ -1115,11 +1115,12 @@ def test_run_paper_total_budget_exhaustion(tmp_path):
     assert any("review skipped" in w for w in result.warnings)
 
 
-def test_run_paper_empty_review_text_continues(tmp_path):
+def test_run_paper_empty_review_text_fails_run(tmp_path):
     root = _paper_root(tmp_path)
     calls = []
     result = run_paper(
-        root, sections=["introduction"],
+        sections=["introduction"],
+        root=root,
         driver_factory=_paper_factory(calls, ""),  # review settles with no text
         budget=PaperBudget(),
     )
@@ -1129,7 +1130,7 @@ def test_run_paper_empty_review_text_continues(tmp_path):
     assert [c for c in calls if c.startswith("fix-")] == []  # nothing to fix
     assert result.full_score is not None  # acceptance still ran
     assert result.sections_completed == ["introduction"]
-    assert result.ok is True
+    assert result.ok is False  # M5: a review that produced nothing fails the run
 
 
 # ------------------------------------------------------------- CLI: harness paper

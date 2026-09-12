@@ -41,7 +41,8 @@
 3. **RPC 模式是一等公民，官方自带 Python 客户端示例**——Python 侧驱动没有 hacks。
 4. **本机已装**（`E:\npm-global\pi` v0.84.3），PoC 零安装成本。
 
-**工具不在多，在于 solid**：本方案只设计 8 个工具。选型依据见 §1 调研结论。
+**工具不在多，在于 solid**：本方案设计 9 个工具（T1-T7 + M3 增补的 T8 `write_outline`、
+T9 `manage_claims`）。选型依据见 §1 调研结论。
 
 ---
 
@@ -116,7 +117,7 @@ pi 若在某项验收上不达标（长任务稳定性、Windows 适配），工
 
 ---
 
-## 4. 工具目录（8 个，loop 无关，A/B 路线共用）
+## 4. 工具目录（9 个，loop 无关，A/B 路线共用）
 
 设计原则（来自 §1）：原子、可组合、描述详尽（何时用/何时**不**用）、幂等、
 错误回灌不中断、自带 guardrail、结果高信号。
@@ -227,13 +228,15 @@ pi 若在某项验收上不达标（长任务稳定性、Windows 适配），工
 
 ### T8 `finish` — 交付前自评（loop 的终点协议）
 
-```
-参数: {final_scores: 来自 T5, qa_reports_read: string[], notes?: string}
-```
+> **实现注记（M3/M5）**：T8 未做成 agent 可调用的 `finish` 工具，而是 Driver 侧的
+> 离线 finish 门（`engine/harness/acceptance.py`），语义更强且不可被模型绕过：
+> 未处理 CONTRADICTED、forbidden_claims 命中（否定句豁免）、未知 cite_XXX、
+> {cite_MISSING} 残留、**计划内缺节、字数底线**、可选 **full score 门槛**
+> （`harness paper --min-score`，默认 75）——任一不过则整 run 判失败。
 
 - 语义终点：agent 声明完成。Driver 在此做最终验收（见 §5）。
 - 防"分数不够也交差"：Driver 校验最后一次 T5 全篇 ≥ 阈值 + FactCheck 无未处理 CONTRADICTED，
-  否则拒绝 finish 并回灌差距清单（is_error 语义）。
+  否则拒绝 finish 并回灌差距清单。
 
 ### 工具 → 现有代码映射
 
@@ -280,10 +283,13 @@ pi **没有 max-steps**，所以以下由 Driver 承担（RPC 轮询，5-10s 间
 | 熔断条件 | 动作 |
 |---|---|
 | `get_session_stats.cost` > 本节/全篇预算 | 发 steer 消息要求收尾 → 超时则 terminate + 用最近快照 |
-| turns > N（默认 40/节） | 同上 |
+| turns ≥ N（默认 40/节） | 同上 |
 | wall clock > 预算 | 同上 |
-| finish 时最终 gate 不达标 | 拒绝 finish（回灌差距清单），给 2 次机会后升级人工/终止 |
-| tool envelope 连续 is_retryable 失败 > 5 | 终止本节，保留快照，标记 FAILED |
+| finish 时最终 gate 不达标 | 整 run 判失败并回灌差距清单（M5 实现；原案的"2 次机会后升级人工"未实现） |
+| tool envelope 连续 is_retryable 失败 > 5 | **未实现**（当前依赖单工具超时 + 预算熔断兜底） |
+
+> 已知边界：provider 不回报 cost 时（`session_stats` 无数值），成本熔断不触发——
+> run_paper 会对无成本会话告警（M5）。
 
 验收通过即更新 `checkpoint.json`（复用 `save_checkpoint`，`utils/checkpoint.py:44`），
 pipeline 状态机天然续接——**旧流水线的 resume 体系与新 harness 不冲突**。
@@ -386,8 +392,9 @@ save_checkpoint(ctx, "compose", output_root)
 2. **run 后蒸馏**：脚本把 journal 与最终 qa 报告对照，生成 `lessons.md`（如
    "methodology 节两次因 citation density 不足返工 → 该节写作前先检索 ≥8 篇"），
    人工确认后并入 `templates/lessons/`。
-3. **下次注入**：同类 topic/venue 的 lessons 在生成 AGENTS.md 时注入——**跨 run 的
-   经验闭环成立，但每处改进都有人审**。
+3. **下次注入**：lessons 在生成 AGENTS.md 时注入——**跨 run 的经验闭环成立，但每处
+   改进都有人审**。（M5 注记：当前注入是全局的，"同类 topic/venue 才注入"的范围
+   控制未实现；lessons/ 下的旧经验无过期机制，晋升时需人工判断相关性。）
 4. 明确不做（v1）：agent 自改 prompt、自动注册新工具、跨 run 自动调参。这些是 RSI
   的后续档位，先有可靠的 journal 数据再谈自动化。
 
@@ -553,3 +560,48 @@ venv `python.exe` + `OPENDRAFT_BOOTSTRAP`（`-c` 引导片段）→ PATH。真�
 - 两次 run 注入：distill → 人工晋升 templates → 第二次 `seed_approved_lessons` +
   `write_paper_map` 可见 lesson（离线测试 `test_two_run_lessons_inject_into_second_paper_map`）。
 
+
+---
+
+## 附录 E：M5 —— 终审整改（2026-09-12，第三方审核后的修复）
+
+审核子代理三维度结论：成熟度 adequate / 数据效率 adequate / **编排 weak**。
+本附录记录已修复项与已知遗留。
+
+**finish 门补全（acceptance.py）** —— 修掉两个 Critical（坏论文能过 / 好论文误杀）：
+
+- 计划内缺节检查：`word_targets` 里承诺的节必须存在于磁盘。
+- 字数底线：每节 ≥ 0.7×target（与 write_section 同一 WORD_FLOOR_RATIO）。
+- 质量分门槛：`harness paper --min-score`（默认 75），full score 在 fix 后、
+  过门前计算，分数不可用也算 gap。
+- forbidden 匹配否定句豁免：含 no/not/never/refute/contrary to 等线索的句子
+  跳过扫描——"we do not claim X" 不再误杀；断言句仍命中（dirty 黄金集不变红）。
+
+**fix 闭环（paper_task.py / revise.py）** —— 修 Major（循环不闭合）：
+
+- fix 会话后按磁盘真相重评分（score_draft scope=section），通过才确认；未确认的节
+  在后续轮次可重试（max_fix_rounds 不再死旋钮），最终仍未过 → gap + 整 run 失败。
+- `revise_section` 落盘即置 `passed=False`：resume 不会跳过未经复验的修订。
+- review 空文本/失败 → 整 run 失败（原为仅告警）。
+- fix 阶段产生的 gap 与 finish 门 gap 合并，不再被覆盖。
+
+**成本遥测（driver.py / eval_suite.py）** —— 修 Major（$ 数字自嗨）：
+
+- 每会话结束 journal 写 `session_end ... spent=<cost>`；eval `_token_cost` 直接读
+  真实标记（黄金集 fixture 与驱动输出格式一致）。
+- `check_thresholds` 新增 `max_token_cost`。
+- provider 不回报 cost 的会话被记名告警（"cost breakers were blind"）。
+
+**小修**：turns 熔断 off-by-one（`>`→`>=`）；`manage_claims resolve` 在节文件缺失时
+拒绝（原为 vacuous 通过）；driver PATH 回退不再把 `.cmd` 递给扩展；TS 扩展
+compile_draft 超时 120s→600s。
+
+**TS 扩展冒烟测试（tests/ts_extension_smoke.mjs，24 断言）**：mock ExtensionAPI 加载
+真实扩展，覆盖 9 工具注册、bootstrap argv 构造、envelope 错误重抛、`.cmd` 拒绝、
+abort-before-start、compile TUI 门、compaction 处理器（含 registry 故障降级）；
+pytest 包装 `tests/test_ts_extension.py` 接入 CI。
+
+**已知遗留（下轮候选）**：guardrails 可被 pi 原生 write 工具绕过（根因是底座工具
+白名单含 write/edit——收敛白名单会影响模型补读自由，需权衡）；review issue 路由
+仍按 fix 文本词匹配，跨节命名漂移会丢单（当前记 warning）；AGENTS.md 三个区块
+有单项上限无数量上限；lessons 注入无 topic/venue 范围控制。

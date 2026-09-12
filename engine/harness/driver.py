@@ -154,6 +154,8 @@ def _default_opendraft_bin() -> str:
     for candidate in ("opendraft.exe", "opendraft"):
         found = shutil.which(candidate)
         if found:
+            if os.name == "nt" and found.lower().endswith((".cmd", ".bat")):
+                continue  # extension rejects wrappers; never hand it one from our side
             return found
     return "opendraft"
 
@@ -364,6 +366,11 @@ class PiDriver:
         if not stats and state.usage:
             stats["usage"] = state.usage
         stats["turns"] = state.turns
+        spent = stats.get("cost")
+        spent_s = f"{float(spent):.4f}" if isinstance(spent, (int, float)) \
+            and not isinstance(spent, bool) else "unknown"
+        journal.log("session_end",
+                    f"session={name} reason={state.reason} spent={spent_s}")
         return DriverResult(
             ok=ok,
             reason=state.reason,
@@ -480,8 +487,8 @@ class PiDriver:
                 # Budget checks (checked on every event and every timeout tick).
                 if now - start > budget.max_seconds:
                     steer(now, f"seconds>{budget.max_seconds:g}")
-                elif state.turns > budget.max_turns:
-                    steer(now, f"turns>{budget.max_turns}")
+                elif state.turns >= budget.max_turns:
+                    steer(now, f"turns>={budget.max_turns}")
                 elif not pending_stats and now - stats_polled_at >= budget.poll_interval_s:
                     request_stats(now)
 

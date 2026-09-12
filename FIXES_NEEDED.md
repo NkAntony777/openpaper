@@ -1,5 +1,9 @@
 # OpenDraft - Fixes Status (Verified)
 
+> **ARCHIVED (2026-09-12)** — 面向旧流水线时代的修复清单；其中引用的是上游仓库的
+> 绝对路径，多项已被 M0-M5 harness 重构覆盖或废除。现行状态以
+> [docs/AGENT_HARNESS_DESIGN.md](docs/AGENT_HARNESS_DESIGN.md) 附录为准。
+
 Date: 2026-02-16  
 Scope: `/Users/federicodeponte/opendraft`
 

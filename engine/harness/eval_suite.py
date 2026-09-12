@@ -120,8 +120,9 @@ def check_thresholds(metrics: EvalMetrics, spec: Dict) -> List[str]:
     """Return human-readable failures against a fixture spec. Empty = pass.
 
     Spec keys (all optional):
-      min_quality, require_factcheck_clean, min_citation_rate, max_forbidden_hits,
-      max_cite_missing, expect_passed, max_fix_rounds
+      min_quality, require_factcheck_clean, require_factcheck_dirty,
+      min_citation_rate, max_citation_rate, max_forbidden_hits, min_forbidden_hits,
+      max_cite_missing, expect_passed, max_fix_rounds, max_token_cost
     """
     failures = []
     if "min_quality" in spec:
@@ -158,6 +159,10 @@ def check_thresholds(metrics: EvalMetrics, spec: Dict) -> List[str]:
         failures.append(f"passed={metrics.passed} expected {spec['expect_passed']}")
     if "max_fix_rounds" in spec and metrics.fix_rounds > spec["max_fix_rounds"]:
         failures.append(f"fix_rounds {metrics.fix_rounds} > {spec['max_fix_rounds']}")
+    if "max_token_cost" in spec and metrics.token_cost > spec["max_token_cost"]:
+        failures.append(
+            f"token_cost {metrics.token_cost:.4f} > {spec['max_token_cost']}"
+        )
     return failures
 
 

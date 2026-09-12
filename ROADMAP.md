@@ -1,6 +1,11 @@
 # OpenDraft ↔ OpenPaper Pipeline Convergence Roadmap
 
-## Status: Active
+> **ARCHIVED (2026-09-12)** — 本文档面向已被 `cd58c8d` 下线的固定流水线
+> （`draft_generator.py` 单体 + 19 agents）。现行架构是 agent 工具层 +
+> pi harness，见 [docs/AGENT_HARNESS_DESIGN.md](docs/AGENT_HARNESS_DESIGN.md)
+> 与 README 的 Roadmap 一节。保留原文供历史查阅。
+
+## Status: Active (historical)
 **Created:** 2025-02-04
 **Last Updated:** 2025-02-04
 

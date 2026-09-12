@@ -329,7 +329,13 @@ def _resolve(args: Dict, root: Path, section: str) -> Dict:
 
     rel = SECTION_FILES[section]["file"]
     section_file = Path(root) / rel
-    text = section_file.read_text(encoding="utf-8") if section_file.exists() else ""
+    if not section_file.exists():
+        return fail(
+            f"section file {rel} not found — cannot evidence-check a resolve "
+            f"against a missing draft",
+            is_retryable=True,
+        )
+    text = section_file.read_text(encoding="utf-8")
     text_l = text.lower()
 
     now = datetime.now().isoformat(timespec="seconds")

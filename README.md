@@ -19,7 +19,7 @@ OpenDraft runs a **fixed 19-agent pipeline** (research → structure → compose
 | Orchestration | Fixed phase pipeline, 19 agents, 7 phases | Agent loop + tools; the model decides the next step (evaluator-optimizer) |
 | Quality feedback | Score/warning only — no rewrite path | Structured issues `{section, metric, actual, target, severity}` fed back to the model, which revises and re-scores until clean |
 | Citation safety | LLM fallback disabled, but no write-time check | **Whitelist guardrail**: `write_section` rejects any `cite_XXX` not in `research/bibliography.json` — hallucinated citations can't reach disk |
-| Tool surface | None for agents (phases only callable as coarse API stubs) | 7 composable tools behind a machine-readable `opendraft tool` CLI contract |
+| Tool surface | None for agents (phases only callable as coarse API stubs) | 9 composable tools behind a machine-readable `opendraft tool` CLI contract |
 | Long-run safety | Checkpoint/resume per phase | + budget breaker (cost/turns/wall-clock → steer → abort → process-tree kill), append-only run journal |
 | Writing context | ~3k-char prompt stuffing per section | `AGENTS.md` paper map + on-demand artifact reads (context is a cache; disk is the truth) |
 | Headless operation | Interactive CLI + UIs | Unattended RPC driver: extension isolation, UI dialogs auto-cancelled, no shell by default |
@@ -45,12 +45,13 @@ Everything OpenDraft built that matters is kept and reused: the citation API cas
                │ stdin/stdout JSONL
 ┌ pi agent (底座) ─────────────────────────────────────────────────┐
 │ agent loop · message history · auto-compaction · tool execution  │
-│ + opendraft-tools.ts extension (7 tools, TypeBox, guidelines)    │
+│ + opendraft-tools.ts extension (9 tools, TypeBox, guidelines)    │
 └──────────────┬───────────────────────────────────────────────────┘
                │ `opendraft tool <name> --root DIR --args '<json>'`
 ┌ Tool layer (engine/agent_tools/) ────────────────────────────────┐
 │ read_artifact · write_section · score_draft · search_literature  │
-│ verify_claims · revise_section · compile_draft                   │
+│ verify_claims · revise_section · compile_draft · write_outline   │
+│ manage_claims (claims ledger: record/list/verify/resolve)        │
 │ envelope: {"ok", "data|error", "is_retryable"} — errors are      │
 │ tool results, never crashes                                      │
 └──────────────┬───────────────────────────────────────────────────┘

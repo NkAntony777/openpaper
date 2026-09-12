@@ -27,7 +27,15 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
 
-const TOOL_TIMEOUT_MS = 120_000;
+const TOOL_TIMEOUT_MS: Record<string, number> = {
+  default: 120_000,
+  // compile_draft runs LLM backfill of {cite_MISSING} + pandoc/weasyprint — allow 10 min.
+  compile_draft: 600_000,
+};
+
+function toolTimeoutMs(toolName: string): number {
+  return TOOL_TIMEOUT_MS[toolName] ?? TOOL_TIMEOUT_MS.default;
+}
 
 type ToolName =
   | "read_artifact"
@@ -130,8 +138,8 @@ async function runOpendraftTool(
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       settled = true;
-      reject(new Error(`${toolName}: timed out after ${TOOL_TIMEOUT_MS / 1000}s and was killed`));
-    }, TOOL_TIMEOUT_MS);
+      reject(new Error(`${toolName}: timed out after ${toolTimeoutMs(toolName) / 1000}s and was killed`));
+    }, toolTimeoutMs(toolName));
 
     const onAbort = () => {
       child.kill("SIGKILL");

@@ -211,11 +211,14 @@ def run(args: Dict, root: Path) -> Dict:
     sync = sync_checkpoint_section(root, section, new_text)
 
     refs = sorted({f"cite_{n}" for n in CITE_REF_RE.findall(new_text)})
+    # A revision invalidates the section's last score: resume must re-verify before
+    # skipping, and the paper-level finish gate re-checks the word floor anyway.
     status_ledger = update_section_status(
         root, section,
         status="revised",
         words=len(new_text.split()),
         citations_count=len(refs),
+        passed=False,
         updated_at=datetime.now().isoformat(timespec="seconds"),
     )
 

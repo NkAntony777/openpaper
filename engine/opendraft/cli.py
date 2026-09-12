@@ -817,6 +817,9 @@ def run_harness_command(argv):
                          help="Total budget in USD across all paper sessions (default 1.5)")
     p_paper.add_argument("--max-turns", type=int, default=40,
                          help="Max agent turns per session before steering wrap-up (default 40)")
+    p_paper.add_argument("--min-score", type=int, default=75,
+                         help="Full-paper quality floor for the finish gate (default 75; "
+                              "the full score is computed after fixes, before the gate)")
     p_distill = sub.add_parser(
         "distill", help="Distill run journal + status ledger into proposed lessons (offline)")
     p_distill.add_argument("--root", type=Path, required=True,
@@ -886,6 +889,7 @@ def run_harness_command(argv):
             max_turns=args.max_turns,
             budget=PaperBudget(total_cost=args.max_cost),
             compile_at_end=args.compile,
+            min_full_score=args.min_score,
             progress=_progress,
         )
         payload = {"ok": result.ok, "data": result.to_dict()}
