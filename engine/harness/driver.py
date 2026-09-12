@@ -52,6 +52,27 @@ class _Eof(Exception):
     """Raised by a line source when the process stream is exhausted."""
 
 
+def _queue_line_source(lines: "queue.Queue") -> Callable[[float], Optional[str]]:
+    """Build a next_line(timeout) callable over a reader-thread queue.
+
+    queue.get RAISES Empty on timeout — that is a normal "wake up and re-check
+    budgets" tick, so it maps to None. The _EOF sentinel maps to _Eof.
+    (Regression: the first end-to-end run lost three section sessions with
+    reason "Empty: " whenever pi was silent longer than poll_interval.)
+    """
+
+    def next_line(timeout: float) -> Optional[str]:
+        try:
+            item = lines.get(timeout=timeout)
+        except queue.Empty:
+            return None
+        if item is _EOF:
+            raise _Eof()
+        return item
+
+    return next_line
+
+
 @dataclass
 class BudgetConfig:
     max_cost_usd: float = 1.0
@@ -118,9 +139,12 @@ def _load_engine_dotenv() -> None:
 
 
 def _default_opendraft_bin() -> str:
-    exe = REPO_DIR / ".venv" / "Scripts" / "opendraft.exe"
-    if exe.exists():
-        return str(exe)
+    # Prefer the repo's own shim/exe deterministically before PATH fallbacks —
+    # a bare "opendraft" reaching the pi extension becomes spawn ENOENT there.
+    for name in ("opendraft.exe", "opendraft.cmd"):
+        shim = REPO_DIR / ".venv" / "Scripts" / name
+        if shim.exists():
+            return str(shim)
     for candidate in ("opendraft.exe", "opendraft.cmd", "opendraft"):
         found = shutil.which(candidate)
         if found:
@@ -275,11 +299,7 @@ class PiDriver:
             threading.Thread(target=_reader, daemon=True).start()
             threading.Thread(target=_stderr_drain, daemon=True).start()
 
-            def next_line(timeout: float) -> Optional[str]:
-                item = lines.get(timeout=timeout)
-                if item is _EOF:
-                    raise _Eof()
-                return item
+            next_line = _queue_line_source(lines)
 
             def send(cmd: Dict) -> None:
                 proc.stdin.write(json.dumps(cmd, ensure_ascii=False) + "\n")

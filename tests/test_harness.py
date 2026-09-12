@@ -23,6 +23,8 @@ from agent_tools.common import (
 )
 from harness.driver import BudgetConfig, DriverResult, PiDriver, _Eof, _Journal
 from harness.paper_map import write_paper_map
+from harness.paper_task import PaperBudget, PaperResult, parse_global_issues, run_paper
+from harness.review_task import NO_ISSUES_TEXT
 from harness.section_task import build_section_prompt
 
 
@@ -942,3 +944,279 @@ def test_cli_harness_review_empty_settled_text_fails(tmp_path, monkeypatch, caps
     payload = json.loads(captured.out.strip().splitlines()[-1])
     assert payload["ok"] is False
     assert "no text" in payload["error"]
+
+
+
+
+# ------------------------------------------------------- paper orchestrator (M2)
+
+
+REVIEW_TEXT_TWO_ISSUES = (
+    "# Global Issues\n\n"
+    "## GI-1 [high] scope: methodology\n"
+    "Issue: Methodology lacks the data-collection detail.\n"
+    "Suggested fix: Add the sampling paragraph in methodology.\n\n"
+    "## GI-2 [medium] scope: global\n"
+    "Issue: Terminology drifts between sections.\n"
+    "Suggested fix: Unify the term \"adaptivity\" in introduction.\n"
+)
+
+
+def test_parse_global_issues_contract():
+    text = (
+        "# Global Issues\n\n"
+        "## GI-1 [high] scope: methodology\nIssue: lacks detail.\nSuggested fix: add it.\n\n"
+        "## GI-2 [low] scope: global\nIssue: drift.\n\n"
+        "## GI-3 [medium] scope: introduction\nSuggested fix: strengthen.\n"
+    )
+    issues = parse_global_issues(text)
+    assert [i["id"] for i in issues] == ["GI-1", "GI-2", "GI-3"]
+    assert issues[0] == {"id": "GI-1", "severity": "high", "scope": "methodology",
+                         "issue": "lacks detail.", "fix": "add it."}
+    assert issues[1]["fix"] == ""  # missing Suggested fix tolerated
+    assert issues[2]["issue"] == ""  # missing Issue line tolerated
+
+
+def test_parse_global_issues_no_issues_text():
+    assert parse_global_issues(NO_ISSUES_TEXT) == []
+    assert parse_global_issues("") == []
+
+
+def test_parse_global_issues_noise_and_defaults():
+    text = (
+        "random noise\n"
+        "## GI-9 scope: results\nIssue: x\nSuggested fix: y\n"  # no severity bracket
+        "## gi-10 [HIGH] scope: discussion\nIssue: z\nSuggested fix: w\n"
+        "## GI-11 [medium]\nIssue: orphan scope\nSuggested fix: q\n"  # no scope -> global
+    )
+    issues = parse_global_issues(text)
+    assert issues[0]["severity"] == "medium" and issues[0]["scope"] == "results"
+    assert issues[1]["id"] == "gi-10" and issues[1]["severity"] == "high"
+    assert issues[2]["scope"] == "global"
+
+
+class _FakePaperDriver:
+    """Canned driver: section sessions write a real draft file (so acceptance scoring and
+    full scoring run for real), review/fix sessions return scripted text."""
+
+    def __init__(self, root, calls, review_text, cost=0.05):
+        self.root = Path(root)
+        self.calls = calls
+        self.review_text = review_text
+        self.cost = cost
+
+    def run(self, prompt, name):
+        self.calls.append(name)
+        if name.startswith("section-"):
+            section = name[len("section-"):]
+            rel = SECTION_FILES[section]["file"]
+            f = self.root / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("word " * 200, "utf-8")
+            settled = "section written"
+        elif name == "global-review":
+            settled = self.review_text
+        elif name.startswith("fix-"):
+            settled = "fixed report"
+        else:
+            settled = ""
+        return DriverResult(
+            ok=True, reason="settled", stats={"cost": self.cost, "turns": 2},
+            journal_path=str(self.root / f"journal_{name}.jsonl"),
+            settled_text=settled, budget_exceeded=False,
+        )
+
+
+def _paper_factory(calls, review_text, cost=0.05):
+    def _factory(root=None, model=None, budget=None):
+        return _FakePaperDriver(root, calls, review_text, cost)
+
+    return _factory
+
+
+def _paper_root(tmp_path):
+    root = tmp_path / "out"
+    root.mkdir()
+    write_checkpoint(root, {
+        "topic": "AI in education", "academic_level": "master",
+        "citation_style": "apa", "language": "en", "word_targets": {},
+    })
+    return root
+
+
+def test_run_paper_full_flow(tmp_path):
+    from agent_tools.common import read_section_status
+
+    root = _paper_root(tmp_path)
+    # introduction is already written+passed -> must be skipped (resume semantics)
+    (root / "drafts").mkdir(exist_ok=True)
+    (root / "drafts" / "01_introduction.md").write_text("word " * 300, "utf-8")
+    update_section_status(root, "introduction", status="written", passed=True,
+                          open_issues=[], updated_at="2026-01-01T00:00:00")
+
+    calls = []
+    result = run_paper(
+        root, driver_factory=_paper_factory(calls, REVIEW_TEXT_TWO_ISSUES),
+        budget=PaperBudget(),
+    )
+
+    assert result.ok is True
+    assert result.sections_skipped == ["introduction"]
+    assert result.sections_completed == [
+        "literature_review", "methodology", "results", "discussion", "conclusion",
+    ]
+    # session names + order: sections (outline order), review, then one fix per section
+    assert calls == [
+        "section-literature_review", "section-methodology", "section-results",
+        "section-discussion", "section-conclusion",
+        "global-review",
+        "fix-methodology", "fix-introduction",
+    ]
+    # review deliverable persisted (settled text is stripped before writing)
+    assert (root / "global_issues.md").read_text(encoding="utf-8") == REVIEW_TEXT_TWO_ISSUES.strip()
+    assert result.review_ok is True
+    assert result.issues_found == 2
+    assert sorted(result.issues_fixed_report) == ["introduction", "methodology"]
+    # full-score phase ran and the ledger "full" bucket matches the reported score
+    assert result.full_score is not None
+    ledger = read_section_status(root)
+    assert ledger["full"]["last_total"] == result.full_score
+    # one journal path per session; cost accumulated from session stats
+    assert len(result.journal_paths) == len(calls)
+    assert result.total_cost == pytest.approx(0.05 * len(calls))
+    assert result.warnings == []
+
+
+def test_run_paper_unknown_sections_dropped(tmp_path):
+    root = _paper_root(tmp_path)
+    calls = []
+    result = run_paper(
+        root, sections=["introduction", "not_a_section"],
+        driver_factory=_paper_factory(calls, ""),
+        budget=PaperBudget(),
+    )
+    assert calls == ["section-introduction", "global-review"]
+    assert result.ok is True
+    assert any("not_a_section" in w for w in result.warnings)
+
+
+def test_run_paper_total_budget_exhaustion(tmp_path):
+    root = _paper_root(tmp_path)
+    calls = []
+    result = run_paper(
+        root, driver_factory=_paper_factory(calls, REVIEW_TEXT_TWO_ISSUES, cost=1.0),
+        budget=PaperBudget(total_cost=0.5),
+    )
+    # first session consumed $1.0 > $0.5 total: everything after is skipped with warnings
+    assert calls == ["section-introduction"]
+    assert result.ok is False  # un-attempted sections count as failed
+    assert result.review_ok is False
+    assert any("budget" in w for w in result.warnings)
+    assert any("review skipped" in w for w in result.warnings)
+
+
+def test_run_paper_empty_review_text_continues(tmp_path):
+    root = _paper_root(tmp_path)
+    calls = []
+    result = run_paper(
+        root, sections=["introduction"],
+        driver_factory=_paper_factory(calls, ""),  # review settles with no text
+        budget=PaperBudget(),
+    )
+    assert result.review_ok is False
+    assert result.issues_found == 0
+    assert not (root / "global_issues.md").exists()
+    assert [c for c in calls if c.startswith("fix-")] == []  # nothing to fix
+    assert result.full_score is not None  # acceptance still ran
+    assert result.sections_completed == ["introduction"]
+    assert result.ok is True
+
+
+# ------------------------------------------------------------- CLI: harness paper
+
+
+def test_cli_harness_paper_missing_root_usage_error(tmp_path, monkeypatch):
+    class _Boom:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("run_paper must not be called on usage errors")
+
+    monkeypatch.setattr("harness.paper_task.run_paper", _Boom)
+    from opendraft.cli import run_harness_command
+
+    with pytest.raises(SystemExit) as exc:
+        run_harness_command(["paper"])
+    assert exc.value.code == 2
+
+
+def test_cli_harness_paper_success_envelope(tmp_path, monkeypatch, capsys):
+    captured = {}
+
+    def fake_run_paper(root, **kwargs):
+        captured["root"] = root
+        captured.update(kwargs)
+        return PaperResult(
+            ok=True,
+            sections_completed=["introduction", "literature_review", "methodology",
+                                "results", "discussion", "conclusion"],
+            sections_skipped=[],
+            review_ok=True,
+            issues_found=2,
+            issues_fixed_report={"methodology": "fixed report"},
+            full_score=88,
+            warnings=[],
+            total_cost=0.42,
+            journal_paths=[str(tmp_path / "run_journal.jsonl")],
+        )
+
+    monkeypatch.setattr("harness.paper_task.run_paper", fake_run_paper)
+    from opendraft.cli import run_harness_command
+
+    rc = run_harness_command([
+        "paper", "--root", str(tmp_path),
+        "--sections", "introduction,conclusion",
+        "--max-cost", "2.5", "--max-turns", "9", "--compile",
+    ])
+    assert rc == 0
+
+    captured_io = capsys.readouterr()
+    payload = json.loads(captured_io.out.strip().splitlines()[-1])
+    assert payload["ok"] is True
+    assert payload["data"]["full_score"] == 88
+    assert payload["data"]["issues_found"] == 2
+    assert payload["data"]["total_cost"] == 0.42
+
+    assert captured["root"] == Path(tmp_path)
+    assert captured["sections"] == ["introduction", "conclusion"]
+    assert captured["budget"].total_cost == 2.5
+    assert captured["max_turns"] == 9
+    assert captured["compile_at_end"] is True
+
+
+def test_queue_line_source_timeout_returns_none_not_raises():
+    """queue.Empty on timeout is a budget-tick, not a crash (end-to-end regression:
+    pi silence > poll_interval used to kill sessions with reason 'Empty: ')."""
+    import queue as _queue
+
+    src = driver_mod._queue_line_source(_queue.Queue())
+    assert src(timeout=0.01) is None  # must NOT raise queue.Empty
+
+    q = _queue.Queue()
+    q.put('{"type":"x"}')
+    src2 = driver_mod._queue_line_source(q)
+    assert src2(timeout=0.01) == '{"type":"x"}'
+
+    q3 = _queue.Queue()
+    q3.put(driver_mod._EOF)
+    src3 = driver_mod._queue_line_source(q3)
+    with pytest.raises(driver_mod._Eof):
+        src3(timeout=0.01)
+
+
+def test_default_opendraft_bin_prefers_repo_shim(tmp_path, monkeypatch):
+    """The pi extension spawns OPENDRAFT_BIN with shell:false — a bare 'opendraft'
+    becomes spawn ENOENT there. The repo shim must be found deterministically."""
+    shim = driver_mod.REPO_DIR / ".venv" / "Scripts" / "opendraft.cmd"
+    if not shim.exists():
+        import pytest as _pt
+        _pt.skip("repo venv shim not present")
+    assert driver_mod._default_opendraft_bin() == str(shim)

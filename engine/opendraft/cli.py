@@ -775,7 +775,7 @@ def run_tool_command(argv):
 
 
 def run_harness_command(argv):
-    """Agent harness driver: `opendraft harness section|review --root DIR ...`.
+    """Agent harness driver: `opendraft harness section|review|paper --root DIR ...`.
 
     Machine-facing: progress goes to stderr; stdout carries exactly one JSON envelope line
     with the DriverResult summary. Exit codes: 0 ok, 1 run failed, 2 usage error.
@@ -795,6 +795,15 @@ def run_harness_command(argv):
     p_review = sub.add_parser("review", help="Global cross-section review with the pi agent loop")
     p_review.add_argument("--root", type=Path, required=True,
                           help="Paper output directory (the agent's working root)")
+    p_paper = sub.add_parser(
+        "paper", help="Orchestrate a full paper: sections -> review -> fixes -> full score")
+    p_paper.add_argument("--root", type=Path, required=True,
+                         help="Paper output directory (the agent's working root)")
+    p_paper.add_argument("--sections", default=None,
+                         help="Comma-separated section list overriding the default plan "
+                              "(e.g. introduction,literature_review)")
+    p_paper.add_argument("--compile", action="store_true",
+                         help="Compile/export the draft after the full score")
     for p in (p_section, p_review):
         p.add_argument("--model", default=None,
                        help="pi model pattern (default: env PI_MODEL or minimax-cn/MiniMax-M3)")
@@ -802,9 +811,15 @@ def run_harness_command(argv):
                        help="Budget in USD before steering wrap-up (default 1.0)")
         p.add_argument("--max-turns", type=int, default=40,
                        help="Max agent turns before steering wrap-up (default 40)")
+    p_paper.add_argument("--model", default=None,
+                         help="pi model pattern (default: env PI_MODEL or minimax-cn/MiniMax-M3)")
+    p_paper.add_argument("--max-cost", type=float, default=1.5,
+                         help="Total budget in USD across all paper sessions (default 1.5)")
+    p_paper.add_argument("--max-turns", type=int, default=40,
+                         help="Max agent turns per session before steering wrap-up (default 40)")
 
     args = parser.parse_args(argv)
-    if args.harness_cmd not in ("section", "review"):
+    if args.harness_cmd not in ("section", "review", "paper"):
         parser.print_help()
         return 2
 
@@ -812,6 +827,26 @@ def run_harness_command(argv):
         print(f"[harness] {msg}", file=sys.stderr, flush=True)
 
     sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    if args.harness_cmd == "paper":
+        from harness.paper_task import PaperBudget, run_paper
+
+        sections = None
+        if args.sections:
+            sections = [s.strip() for s in args.sections.split(",") if s.strip()]
+        result = run_paper(
+            args.root,
+            sections=sections,
+            model=args.model,
+            max_turns=args.max_turns,
+            budget=PaperBudget(total_cost=args.max_cost),
+            compile_at_end=args.compile,
+            progress=_progress,
+        )
+        payload = {"ok": result.ok, "data": result.to_dict()}
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0 if result.ok else 1
+
     from harness.driver import BudgetConfig, PiDriver
 
     if args.harness_cmd == "section":

@@ -7,7 +7,7 @@ ABOUTME: paper map / research material, so the model drives the read -> write ->
 
 import sys
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -106,5 +106,44 @@ def build_section_prompt(root, section: str) -> str:
         "6. Finish with a plain-text report containing exactly: the file path written, the final "
         "word count, the number of distinct cite_XXX ids used, and the final score_draft score "
         "with any issues you could not resolve.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def build_fix_prompt(root, section: str, issues: List[Dict]) -> str:
+    """Build the targeted-fix prompt for one section: address global-review findings with
+    revise_section, re-score, and report what was fixed. Raises ValueError for unknown
+    sections."""
+    root = Path(root)
+    if section not in SECTION_FILES:
+        valid = ", ".join(sorted(SECTION_FILES))
+        raise ValueError(f"unknown section '{section}' (valid: {valid})")
+    meta = SECTION_FILES[section]
+
+    lines = [
+        f"Fix global-review findings in the `{section}` section of the paper in this directory.",
+        "",
+        "Material (read it with read_artifact — never fix from memory):",
+        "- `AGENTS.md` (the paper map) — for outline context and neighboring-section state.",
+        f"- The current draft `{meta['file']}` — the file you are fixing.",
+        "",
+        "Findings assigned to this section (from global_issues.md):",
+    ]
+    for i, it in enumerate(issues, 1):
+        lines.append(f"{i}. [{it.get('severity', 'medium')}] {it.get('issue', '').strip()}")
+        fix = (it.get("fix") or "").strip()
+        if fix:
+            lines.append(f"   Suggested fix: {fix}")
+    lines += [
+        "",
+        "Protocol:",
+        "1. Read the current draft and AGENTS.md.",
+        "2. Address every finding with revise_section — prefer find_replace pairs for precise "
+        "unique-match edits; use free-text instructions for broader rewrites. Never introduce "
+        "citations that are not in research/bibliography.json.",
+        "3. Re-check with score_draft (scope=section): the section must still pass its "
+        "guardrails (word floor, no placeholders). Fix regressions before finishing.",
+        "4. Finish with a plain-text report: for each finding, FIXED or NOT FIXED with a "
+        "one-line reason, plus the final score_draft passed state.",
     ]
     return "\n".join(lines) + "\n"
