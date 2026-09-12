@@ -5,21 +5,70 @@ ABOUTME: Narrative consistency, voice unification, and factual verification
 """
 
 import json
+import re
 import time
 import logging
+from typing import List, Tuple
 
 from .context import DraftContext
+from .results import PhaseResult, PhaseStatus
 
 logger = logging.getLogger(__name__)
 
 
-def run_validate_phase(ctx: DraftContext) -> None:
+# English stopwords for forbidden-claim keyword matching
+_STOPWORDS = {
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
+    "that", "this", "these", "those", "is", "are", "was", "were", "be",
+    "been", "has", "have", "had", "we", "our", "it", "its", "as", "by",
+    "at", "from", "not", "no", "but", "can", "could", "will", "would",
+}
+
+
+def _claim_keywords(claim: str, min_len: int = 4) -> List[str]:
+    """Extract meaningful keywords from a forbidden-claim sentence."""
+    words = re.findall(r"[a-zA-Z\u4e00-\u9fff]+", claim.lower())
+    return [w for w in words if len(w) >= min_len and w not in _STOPWORDS]
+
+
+def match_forbidden_claims(
+    text: str,
+    forbidden_claims: List[str],
+    match_threshold: float = 0.6,
+    min_keywords: int = 2,
+) -> List[Tuple[str, float, List[str]]]:
     """
-    Execute the QA phase: Thread -> Narrator -> FactCheck.
+    Detect forbidden claims in draft text via keyword overlap.
+
+    A claim is flagged when at least `match_threshold` of its meaningful
+    keywords appear in the text (and at least `min_keywords` matched).
+    Pure-text matching: deterministic, testable, no LLM needed.
+
+    Returns list of (claim, match_ratio, matched_keywords).
+    """
+    lowered = text.lower()
+    hits = []
+    for claim in forbidden_claims:
+        keywords = _claim_keywords(claim)
+        if not keywords:
+            continue
+        matched = [k for k in keywords if k in lowered]
+        ratio = len(matched) / len(keywords)
+        if len(matched) >= min_keywords and ratio >= match_threshold:
+            hits.append((claim, ratio, matched))
+    return hits
+
+
+def run_validate_phase(ctx: DraftContext) -> PhaseResult:
+    """
+    Execute the QA phase: Thread -> Narrator -> FactCheck -> Forbidden-claims audit.
 
     Writes QA report files to drafts/ folder. No ctx mutations.
+    Returns: PhaseResult with report artifacts and issue counts.
     """
     from utils.agent_runner import run_agent, rate_limit_delay
+
+    phase_start = time.time()
 
     logger.info("=" * 80)
     logger.info("PHASE 3.5: QUALITY ASSURANCE - Narrative consistency & voice unification")
@@ -40,7 +89,10 @@ def run_validate_phase(ctx: DraftContext) -> None:
     rate_limit_delay()
 
     # --- QA STEP 3: FactCheck ---
-    _run_factcheck(ctx, all_chapters_for_qa)
+    factcheck_claims = _run_factcheck(ctx, all_chapters_for_qa)
+
+    # --- QA STEP 4: Forbidden claims audit (author-specified boundaries) ---
+    forbidden_hits = _check_forbidden_claims(ctx, all_chapters_for_qa)
 
     logger.info("=" * 80)
     logger.info("PHASE 3.5 COMPLETE - QA reports generated")
@@ -48,6 +100,30 @@ def run_validate_phase(ctx: DraftContext) -> None:
     logger.info("=" * 80)
 
     rate_limit_delay()
+
+    artifacts = {}
+    drafts = ctx.folders.get('drafts') if ctx.folders else None
+    if drafts:
+        for key, name in [
+            ("narrative_report", "qa_narrative_consistency.md"),
+            ("voice_report", "qa_voice_unification.md"),
+            ("factcheck_report", "qa_factcheck.md"),
+            ("forbidden_claims_report", "qa_forbidden_claims.md"),
+        ]:
+            p = drafts / name
+            if p.exists():
+                artifacts[key] = str(p)
+
+    return PhaseResult(
+        phase="validate",
+        status=PhaseStatus.SUCCESS,
+        artifacts=artifacts,
+        metrics={
+            "claims_checked": factcheck_claims,
+            "forbidden_claim_hits": len(forbidden_hits),
+        },
+        duration_seconds=time.time() - phase_start,
+    )
 
 
 def _build_qa_content(ctx: DraftContext) -> str:
@@ -210,24 +286,34 @@ def _run_narrator(ctx: DraftContext, qa_content: str) -> None:
         logger.warning("Continuing without voice unification check...")
 
 
-def _run_factcheck(ctx: DraftContext, qa_content: str) -> None:
+def _run_factcheck(ctx: DraftContext, qa_content: str) -> int:
+    """Run the FactCheck agent; returns the number of claims verified (0 if skipped)."""
     from utils.agent_runner import run_agent
 
     if not ctx.config.validation.enable_factcheck:
-        logger.info("[QA 3/3] FactCheck disabled (enable_factcheck=False) \u2014 skipping")
+        logger.info("[QA 3/3] FactCheck disabled (enable_factcheck=False) — skipping")
         if ctx.tracker:
             ctx.tracker.update_phase("writing", progress_percent=80, chapters_count=4, details={"stage": "qa_complete"})
-        return
+        return 0
 
     try:
         logger.info("[QA 3/3] Running FactCheck agent - Factual Claim Verification")
         qa_start = time.time()
 
+        gt_protocol = ctx.research_brief.ground_truth_protocol if ctx.research_brief else None
+        gt_block = ""
+        if gt_protocol:
+            gt_block = f"""
+**GROUND TRUTH PROTOCOL (author-specified):** {gt_protocol}
+Claims that depend on empirical ground truth are only verifiable against this
+protocol. Flag any empirical claim that cannot be traced to it as INSUFFICIENT.
+"""
+
         extraction_output = run_agent(
             model=ctx.model,
             name="FactCheck - Claim Extraction",
             prompt_path="prompts/04_validate/factcheck_extract.md",
-            user_input=f"Extract all verifiable factual claims from this draft:\n\n{qa_content}",
+            user_input=f"Extract all verifiable factual claims from this draft:\n\n{qa_content}{gt_block}",
             skip_validation=True,
             verbose=ctx.verbose,
             token_tracker=ctx.token_tracker,
@@ -268,9 +354,72 @@ def _run_factcheck(ctx: DraftContext, qa_content: str) -> None:
         if ctx.tracker:
             ctx.tracker.update_phase("writing", progress_percent=80, chapters_count=4, details={"stage": "qa_complete"})
 
+        return len(claims)
+
     except json.JSONDecodeError as e:
         logger.warning(f"[QA 3/3] \u26a0\ufe0f  FactCheck claim extraction returned invalid JSON: {e}")
         logger.warning("Continuing without fact-check verification...")
+        return 0
     except Exception as e:
         logger.warning(f"[QA 3/3] \u26a0\ufe0f  FactCheck agent failed: {e}")
         logger.warning("Continuing without fact-check verification...")
+        return 0
+
+
+def _check_forbidden_claims(ctx: DraftContext, qa_content: str) -> List[Tuple[str, float, List[str]]]:
+    """
+    Audit the draft against the author's forbidden-claims list.
+
+    Pure-text keyword matching (see match_forbidden_claims). Writes
+    qa_forbidden_claims.md and emits events; never raises.
+    """
+    forbidden = ctx.research_brief.forbidden_claims if ctx.research_brief else []
+    if not forbidden:
+        return []
+
+    logger.info(f"[QA 4] Auditing {len(forbidden)} forbidden claims (author boundaries)")
+    hits = match_forbidden_claims(qa_content, forbidden)
+
+    report_lines = [
+        "# Forbidden Claims Audit",
+        "",
+        f"The author specified {len(forbidden)} claims that must NOT appear in the paper.",
+        "",
+    ]
+    if hits:
+        report_lines.append(f"**\u26a0\ufe0f {len(hits)} potential violation(s) detected:**")
+        for claim, ratio, matched in hits:
+            report_lines.append(f"\n- `{claim}` — {ratio:.0%} keyword overlap (matched: {', '.join(matched)})")
+        report_lines.append("\nManual review required: rewrite these passages so the forbidden claim is not made.")
+    else:
+        report_lines.append("\u2705 No forbidden claims detected.")
+
+    report = "\n".join(report_lines)
+    try:
+        (ctx.folders['drafts'] / "qa_forbidden_claims.md").write_text(report, encoding='utf-8')
+    except Exception as e:
+        logger.warning(f"[QA 4] Could not write forbidden-claims report: {e}")
+
+    if hits:
+        logger.warning(f"[QA 4] \u26a0\ufe0f  {len(hits)} forbidden-claim violation(s) — see qa_forbidden_claims.md")
+        if ctx.verbose:
+            print(f"   \u26a0\ufe0f  Forbidden claims audit: {len(hits)} violation(s)")
+        if ctx.tracker:
+            ctx.tracker.log_activity(
+                f"\u26a0\ufe0f  Forbidden claim violations: {len(hits)}",
+                event_type="warning", phase="writing",
+            )
+    else:
+        logger.info("[QA 4] \u2705 No forbidden claims detected")
+        if ctx.verbose:
+            print("   \u2705 Forbidden claims audit passed")
+
+    if getattr(ctx, "event_bus", None):
+        from protocols import PhaseEventType
+        ctx.event_bus.emit(
+            PhaseEventType.FORBIDDEN_CLAIM_DETECTED if hits else PhaseEventType.VALIDATION_ISSUE,
+            phase="validate",
+            data={"violations": [h[0] for h in hits], "checked": len(forbidden)},
+        )
+
+    return hits

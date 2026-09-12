@@ -12,11 +12,11 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from google import genai
-
 from config import get_config
 from utils.export_professional import export_pdf, export_docx
 from utils.retry import get_gemini_circuit_breaker
+from utils.openai_client import OpenAIModelWrapper
+from utils.gemini_client import GeminiModelWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,8 @@ def call_gemini_revise(draft: str, instructions: str, model: str = "gemini-3-fla
         Revised draft text
     """
     config = get_config()
-    client = genai.Client(api_key=config.google_api_key)
+    if config.model.provider == "openai" and model.startswith("gemini"):
+        model = config.model.model_name
     circuit_breaker = get_gemini_circuit_breaker()
 
     prompt = f"""You are an academic writing expert. Revise the following draft based on the user's instructions.
@@ -133,12 +134,27 @@ Return the complete revised draft below:
             continue
 
         try:
-            response = client.models.generate_content(
-                model=model,
-                contents=prompt,
-            )
+            if config.model.provider == "openai":
+                llm = OpenAIModelWrapper(
+                    model_name=model,
+                    api_key=config.openai_api_key,
+                    base_url=config.openai_base_url,
+                    temperature=0.7,
+                    max_tokens=8192,
+                )
+                response = llm.generate_content(prompt)
+                revised = response.text.strip()
+            else:
+                try:
+                    from google import genai
+                except ImportError:
+                    raise ImportError("google-genai required. Install with: pip install google-genai")
+
+                client = genai.Client(api_key=config.google_api_key)
+                llm = GeminiModelWrapper(client, model, temperature=0.7)
+                response = llm.generate_content(prompt)
+                revised = response.text.strip()
             circuit_breaker.record_success()
-            revised = response.text.strip()
             break
         except Exception as e:
             last_error = e

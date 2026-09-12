@@ -12,8 +12,10 @@ import os
 import sys
 import time
 import logging
+import json
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+from pathlib import Path
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -93,7 +95,16 @@ class ProgressTracker:
     MAX_ACTIVITY_LOG_SIZE = 50  # Keep last N entries
     STORAGE_BUCKET_NAME = os.environ.get('STORAGE_BUCKET_NAME', 'thesis-files')
 
-    def __init__(self, draft_id: str = None, user_id: str = None, table_name: str = "theses", supabase_client=None, cancellation_checker=None):
+    def __init__(
+        self,
+        draft_id: str = None,
+        user_id: str = None,
+        table_name: str = "theses",
+        supabase_client=None,
+        cancellation_checker=None,
+        local_progress_path: Optional[str] = None,
+        local_only: bool = False,
+    ):
         """
         Initialize progress tracker.
 
@@ -111,16 +122,52 @@ class ProgressTracker:
         self._activity_log: List[Dict[str, Any]] = []  # Local cache of activity log
         self.cancellation_checker = cancellation_checker
 
+        self.local_progress_path = Path(local_progress_path).resolve() if local_progress_path else None
+        self.local_only = local_only
+        self._current_phase: Optional[str] = None
+        self._current_progress_percent: int = 0
+        self._current_details: Dict[str, Any] = {}
+
         if supabase_client:
             self.supabase = supabase_client
         else:
-            from supabase import create_client
             supabase_url = (os.environ.get("SUPABASE_URL")
                            or os.environ.get("SUPABASE_PROJECT_URL")
                            or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
                            or os.environ.get("NEXT_PUBLIC_SUPABASE_PROJECT_URL"))
             supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-            self.supabase = create_client(supabase_url, supabase_key)
+            if supabase_url and supabase_key and not local_only:
+                from supabase import create_client
+                self.supabase = create_client(supabase_url, supabase_key)
+            else:
+                self.supabase = None
+                logger.info("Supabase not configured. Progress will be local-only.")
+
+        if self.local_progress_path:
+            self._write_local_progress()
+
+    def set_local_progress_path(self, path: str) -> None:
+        """Set local progress file path and write current progress."""
+        if not path:
+            return
+        self.local_progress_path = Path(path).resolve()
+        self._write_local_progress()
+
+    def _write_local_progress(self) -> None:
+        """Write progress snapshot to local JSON file if configured."""
+        if not self.local_progress_path:
+            return
+        try:
+            payload = {
+                "phase": self._current_phase,
+                "progress_percent": self._current_progress_percent,
+                "progress_details": self._current_details,
+                "updated_at": datetime.now().isoformat(),
+            }
+            self.local_progress_path.parent.mkdir(parents=True, exist_ok=True)
+            self.local_progress_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.debug(f"Failed to write local progress: {e}")
 
         # Track milestone files that have been uploaded
         self._milestone_files: Dict[str, str] = {}
@@ -146,6 +193,10 @@ class ProgressTracker:
         from pathlib import Path
 
         try:
+            if self.supabase is None:
+                logger.info("Supabase not configured. Skipping milestone upload.")
+                return None
+
             local_path = Path(file_path)
             if not local_path.exists():
                 logger.warning(f"Milestone file not found: {file_path}")
@@ -238,6 +289,9 @@ class ProgressTracker:
     def _update_milestone_files(self):
         """Update the milestone_files in progress_details."""
         try:
+            if self.supabase is None:
+                self._write_local_progress()
+                return
             # Get current progress_details
             result = self.supabase.table(self.table_name).select('progress_details').eq('id', self.record_id).execute()
             current_details = result.data[0].get('progress_details', {}) if result.data else {}
@@ -245,12 +299,15 @@ class ProgressTracker:
             # Merge milestone_files
             current_details['milestone_files'] = self._milestone_files
             current_details['activity_log'] = self._activity_log
+            self._current_details = current_details
+            self._write_local_progress()
 
             # Update
-            self.supabase.table(self.table_name).update({
-                'progress_details': current_details,
-                'updated_at': datetime.now().isoformat()
-            }).eq('id', self.record_id).execute()
+            if self.supabase:
+                self.supabase.table(self.table_name).update({
+                    'progress_details': current_details,
+                    'updated_at': datetime.now().isoformat()
+                }).eq('id', self.record_id).execute()
 
         except Exception as e:
             logger.warning(f"Failed to update milestone_files: {e}")
@@ -382,7 +439,13 @@ class ProgressTracker:
             if chapters_count is not None:
                 update_data["chapters_count"] = chapters_count
 
-            self.supabase.table(self.table_name).update(update_data).eq("id", self.record_id).execute()
+            self._current_phase = phase
+            self._current_progress_percent = progress_percent
+            self._current_details = progress_details
+            self._write_local_progress()
+
+            if self.supabase:
+                self.supabase.table(self.table_name).update(update_data).eq("id", self.record_id).execute()
 
             logger.info(f"Progress [{self.table_name}]: {phase} ({progress_percent}%) | Sources: {sources_count or 0} | Chapters: {chapters_count or 0}")
 
@@ -416,11 +479,18 @@ class ProgressTracker:
             if len(self._activity_log) > self.MAX_ACTIVITY_LOG_SIZE:
                 self._activity_log = self._activity_log[-self.MAX_ACTIVITY_LOG_SIZE:]
 
-            # Update just the activity_log in progress_details
-            self.supabase.table(self.table_name).update({
-                "progress_details": {"activity_log": self._activity_log},
-                "updated_at": datetime.now().isoformat()
-            }).eq("id", self.record_id).execute()
+            self._current_details = {
+                **(self._current_details or {}),
+                "activity_log": self._activity_log,
+            }
+            self._write_local_progress()
+
+            if self.supabase:
+                # Update just the activity_log in progress_details
+                self.supabase.table(self.table_name).update({
+                    "progress_details": {"activity_log": self._activity_log},
+                    "updated_at": datetime.now().isoformat()
+                }).eq("id", self.record_id).execute()
 
         except Exception as e:
             logger.warning(f"Activity log update failed: {e}")
@@ -498,11 +568,15 @@ class ProgressTracker:
             if self._milestone_files:
                 progress_details["milestone_files"] = self._milestone_files
 
-            # Update DB with complete progress_details
-            self.supabase.table(self.table_name).update({
-                "progress_details": progress_details,
-                "updated_at": datetime.now().isoformat()
-            }).eq("id", self.record_id).execute()
+            self._current_details = progress_details
+            self._write_local_progress()
+
+            if self.supabase:
+                # Update DB with complete progress_details
+                self.supabase.table(self.table_name).update({
+                    "progress_details": progress_details,
+                    "updated_at": datetime.now().isoformat()
+                }).eq("id", self.record_id).execute()
 
         except Exception as e:
             logger.warning(f"Source log failed: {e}")
@@ -604,7 +678,13 @@ class ProgressTracker:
                 "updated_at": datetime.now().isoformat()
             }
 
-            self.supabase.table(self.table_name).update(update_data).eq("id", self.record_id).execute()
+            self._current_phase = "exporting"
+            self._current_progress_percent = 100
+            self._current_details = progress_details
+            self._write_local_progress()
+
+            if self.supabase:
+                self.supabase.table(self.table_name).update(update_data).eq("id", self.record_id).execute()
             logger.info("Generation completed successfully!")
 
         except Exception as e:
@@ -625,7 +705,13 @@ class ProgressTracker:
             if error_message:
                 update_data["error_message"] = error_message
 
-            self.supabase.table(self.table_name).update(update_data).eq("id", self.record_id).execute()
+            self._current_phase = self._current_phase or "error"
+            self._current_progress_percent = self._current_progress_percent or 0
+            self._current_details = update_data.get("progress_details", {})
+            self._write_local_progress()
+
+            if self.supabase:
+                self.supabase.table(self.table_name).update(update_data).eq("id", self.record_id).execute()
             logger.error(f"Generation failed: {error_message or 'Unknown error'}")
 
         except Exception as e:

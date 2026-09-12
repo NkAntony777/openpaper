@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import get_config
 from utils.document_reader import read_document, get_document_info
 from utils.gemini_client import GeminiModelWrapper
+from utils.openai_client import OpenAIModelWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -44,22 +45,32 @@ def generate_tldr(
     Returns:
         TL;DR as markdown string with 5 bullets
     """
-    try:
-        from google import genai
-    except ImportError:
-        raise ImportError("google-genai required. Install with: pip install google-genai")
-
     document_path = Path(document_path)
     content = read_document(document_path, max_chars=max_chars)
 
-    # Setup Gemini client
     config = get_config()
-    api_key = config.google_api_key or os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY required")
+    if config.model.provider == "openai" and model_name.startswith("gemini"):
+        model_name = config.model.model_name
+    if config.model.provider == "openai":
+        model = OpenAIModelWrapper(
+            model_name=model_name,
+            api_key=config.openai_api_key,
+            base_url=config.openai_base_url,
+            temperature=0.3,
+            max_tokens=2048,
+        )
+    else:
+        try:
+            from google import genai
+        except ImportError:
+            raise ImportError("google-genai required. Install with: pip install google-genai")
 
-    client = genai.Client(api_key=api_key)
-    model = GeminiModelWrapper(client, model_name, temperature=0.3)
+        api_key = config.google_api_key or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY required")
+
+        client = genai.Client(api_key=api_key)
+        model = GeminiModelWrapper(client, model_name, temperature=0.3)
 
     # Build prompt
     prompt = f"""{TLDR_PROMPT}

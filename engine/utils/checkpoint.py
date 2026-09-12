@@ -17,6 +17,30 @@ logger = logging.getLogger(__name__)
 PHASES = ["research", "structure", "citations", "compose", "validate", "compile"]
 
 
+def _spec_list_asdict(items) -> list:
+    """Serialize a list of spec dataclasses (or already-plain dicts) for checkpointing."""
+    out = []
+    for item in items or []:
+        if hasattr(item, "__dataclass_fields__"):
+            out.append(asdict(item))
+        elif isinstance(item, dict):
+            out.append(dict(item))
+        # anything else (None, scalars) is dropped silently — checkpoints must not crash
+    return out
+
+
+def _spec_list_fromdict(cls, items) -> list:
+    """Rebuild spec dataclasses from plain dicts, skipping malformed entries."""
+    out = []
+    for item in items or []:
+        try:
+            known = {k: v for k, v in item.items() if k in cls.__dataclass_fields__}
+            out.append(cls(**known))
+        except Exception as e:
+            logger.warning(f"Skipping malformed {cls.__name__} entry in checkpoint: {e}")
+    return out
+
+
 def save_checkpoint(ctx: 'DraftContext', phase: str, checkpoint_dir: Path) -> Path:
     """
     Save checkpoint after a phase completes.
@@ -46,6 +70,13 @@ def save_checkpoint(ctx: 'DraftContext', phase: str, checkpoint_dir: Path) -> Pa
         "skip_validation": ctx.skip_validation,
         "verbose": ctx.verbose,
         "blurb": ctx.blurb,
+
+        # Structured research intent
+        "research_brief": asdict(ctx.research_brief) if getattr(ctx, "research_brief", None) else None,
+        "custom_outline": _spec_list_asdict(getattr(ctx, "custom_outline", None)),
+        "custom_baselines": _spec_list_asdict(getattr(ctx, "custom_baselines", None)),
+        "custom_ablation": _spec_list_asdict(getattr(ctx, "custom_ablation", None)),
+        "venue_target": getattr(ctx, "venue_target", None),
 
         # Academic metadata
         "author_name": ctx.author_name,
@@ -134,6 +165,22 @@ def restore_context(ctx: 'DraftContext', checkpoint_data: Dict[str, Any]) -> Non
     ctx.skip_validation = checkpoint_data.get("skip_validation", ctx.skip_validation)
     ctx.verbose = checkpoint_data.get("verbose", ctx.verbose)
     ctx.blurb = checkpoint_data.get("blurb", ctx.blurb)
+
+    # Restore structured research intent
+    brief_data = checkpoint_data.get("research_brief")
+    if brief_data:
+        try:
+            from research_brief import ResearchBrief, SectionSpec, BaselineSpec, AblationSpec
+            ctx.research_brief = ResearchBrief.from_dict(brief_data)
+            if checkpoint_data.get("custom_outline"):
+                ctx.custom_outline = _spec_list_fromdict(SectionSpec, checkpoint_data["custom_outline"])
+            if checkpoint_data.get("custom_baselines"):
+                ctx.custom_baselines = _spec_list_fromdict(BaselineSpec, checkpoint_data["custom_baselines"])
+            if checkpoint_data.get("custom_ablation"):
+                ctx.custom_ablation = _spec_list_fromdict(AblationSpec, checkpoint_data["custom_ablation"])
+        except Exception as e:
+            logger.warning(f"Could not restore research brief from checkpoint: {e}")
+    ctx.venue_target = checkpoint_data.get("venue_target", getattr(ctx, "venue_target", None))
 
     # Restore academic metadata
     ctx.author_name = checkpoint_data.get("author_name")

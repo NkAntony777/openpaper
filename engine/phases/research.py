@@ -5,23 +5,71 @@ ABOUTME: Discovers citations, summarizes papers, identifies research gaps
 """
 
 import re
+import time
 import logging
 from pathlib import Path
 from typing import List
 
 from .context import DraftContext
+from .results import PhaseResult, PhaseStatus
 
 logger = logging.getLogger(__name__)
 
 
-def run_research_phase(ctx: DraftContext) -> None:
+DEFAULT_RESEARCH_QUERIES_TEMPLATE = [
+    "{topic} fundamentals and background",
+    "{topic} current state of research",
+    "{topic} methodology and approaches",
+    "{topic} applications and case studies",
+    "{topic} challenges and limitations",
+    "{topic} future directions and implications",
+]
+
+
+def derive_queries_from_blurb(topic: str, blurb: str, max_queries: int = 10) -> List[str]:
+    """
+    Derive structured research queries from a free-text blurb.
+
+    Splits the blurb into sentences, keeps the informative ones as focused
+    queries ("topic — sentence"), and backfills with the default templates
+    so the query list is never thin.
+    """
+    sentences = [s.strip() for s in re.split(r'[.!?;\n]+', blurb) if len(s.strip()) >= 20]
+    focused = [f"{topic} — {s[:200]}" for s in sentences[:max_queries]]
+    defaults = [t.format(topic=topic) for t in DEFAULT_RESEARCH_QUERIES_TEMPLATE]
+    for d in defaults:
+        if len(focused) >= max_queries:
+            break
+        focused.append(d)
+    return focused
+
+
+def resolve_research_queries(ctx: DraftContext) -> List[str]:
+    """
+    Pick research queries with the documented priority:
+      1. brief.literature_search_questions (author-supplied, authoritative)
+      2. blurb-derived focused queries
+      3. default topic templates
+    """
+    brief = ctx.research_brief
+    if brief and brief.literature_search_questions:
+        return list(brief.literature_search_questions)
+    if ctx.blurb:
+        return derive_queries_from_blurb(ctx.topic, ctx.blurb)
+    return [t.format(topic=ctx.topic) for t in DEFAULT_RESEARCH_QUERIES_TEMPLATE]
+
+
+def run_research_phase(ctx: DraftContext) -> PhaseResult:
     """
     Execute the research phase: Scout -> Scribe -> Signal.
 
     Mutates ctx: scout_result, scout_output, scribe_output, signal_output
+    Returns: PhaseResult with citation counts and artifact paths
     """
     from utils.agent_runner import run_agent, rate_limit_delay, research_citations_via_api
     from utils.text_utils import smart_truncate
+
+    phase_start = time.time()
 
     if ctx.verbose:
         print("\n📚 PHASE 1: RESEARCH")
@@ -36,16 +84,13 @@ def run_research_phase(ctx: DraftContext) -> None:
     if ctx.blurb:
         topic_context = f"{ctx.topic}\n\nFocus/Context: {ctx.blurb}"
 
-    research_topics = [
-        f"{ctx.topic} fundamentals and background",
-        f"{ctx.topic} current state of research",
-        f"{ctx.topic} methodology and approaches",
-        f"{ctx.topic} applications and case studies",
-        f"{ctx.topic} challenges and limitations",
-        f"{ctx.topic} future directions and implications",
-    ]
-    if ctx.blurb:
-        research_topics.insert(0, f"{ctx.topic} - {ctx.blurb}")
+    research_topics = resolve_research_queries(ctx)
+    logger.info(
+        f"Research queries ({len(research_topics)}, "
+        f"source={'brief' if ctx.research_brief and ctx.research_brief.literature_search_questions else 'blurb' if ctx.blurb else 'default'}): "
+        + " | ".join(q[:80] for q in research_topics[:5])
+        + (" ..." if len(research_topics) > 5 else "")
+    )
 
     # -----------------------------------------------------------------------
     # AGENT: Scout
@@ -58,15 +103,18 @@ def run_research_phase(ctx: DraftContext) -> None:
         min_citations = ctx.word_targets['min_citations']
         deep_research_min = ctx.word_targets['deep_research_min_sources']
 
+        enforce_gate = ctx.enforce_citation_gate if ctx.enforce_citation_gate is not None else not ctx.skip_validation
+
         ctx.scout_result = research_citations_via_api(
             model=ctx.model,
             research_topics=research_topics,
             output_path=ctx.folders['research'] / "scout_raw.md",
             target_minimum=min_citations,
             verbose=ctx.verbose,
+            enforce_quality_gate=enforce_gate,
             use_deep_research=True,
             topic=ctx.topic,
-            scope=ctx.topic,
+            scope=ctx.blurb or ctx.topic,
             min_sources_deep=deep_research_min,
             progress_callback=progress_callback,
         )
@@ -156,6 +204,24 @@ def run_research_phase(ctx: DraftContext) -> None:
         ctx.tracker.log_activity("\u2705 Research gaps identified", event_type="found", phase="research")
 
     rate_limit_delay()
+
+    paper_files = sorted(ctx.folders['papers'].glob("paper_*.md")) if ctx.folders else []
+    return PhaseResult(
+        phase="research",
+        status=PhaseStatus.SUCCESS,
+        artifacts={
+            "scout_raw": str(ctx.folders['research'] / "scout_raw.md"),
+            "combined_research": str(ctx.folders['research'] / "combined_research.md"),
+            "research_gaps": str(ctx.folders['research'] / "research_gaps.md"),
+            "papers_dir": str(ctx.folders['papers']),
+        },
+        metrics={
+            "citations_found": ctx.scout_result.get('count', 0) if ctx.scout_result else 0,
+            "queries_run": len(research_topics),
+            "paper_files": len(paper_files),
+        },
+        duration_seconds=time.time() - phase_start,
+    )
 
 
 # ---------------------------------------------------------------------------

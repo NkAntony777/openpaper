@@ -27,3 +27,6 @@ python-dotenv>=1.0.0,<2.0.0 # Load .env files
 rich>=13.0.0,<14.0.0        # Pretty terminal output (for scripts)
 psutil>=5.9.0,<7.0.0        # System monitoring for health checks
 tenacity>=8.2.0,<10.0.0    # Production-grade retry with exponential backoff
+
+# === Web UI (optional) ===
+flask>=2.3.0,<3.0.0

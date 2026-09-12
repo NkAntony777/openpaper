@@ -4,24 +4,125 @@ ABOUTME: Compose phase — 7 Crafter agents writing thesis sections
 ABOUTME: Introduction, Literature Review, Methodology, Results, Discussion, Conclusion, Appendices
 """
 
+import re
 import time
 import logging
 import traceback
+from typing import List, Optional
 
 from .context import DraftContext
+from .results import PhaseResult, PhaseStatus
+from research_brief import SectionSpec
 
 logger = logging.getLogger(__name__)
 
 
-def run_compose_phase(ctx: DraftContext) -> None:
+# ---------------------------------------------------------------------------
+# Brief / venue / custom-outline injection helpers
+# ---------------------------------------------------------------------------
+
+def _research_directives(ctx: DraftContext) -> str:
+    """
+    Render the author's research directives for compose prompts:
+    research brief + venue block + explicit baselines/ablation overrides.
+
+    Priority: custom_baselines/custom_ablation params > research_brief fields.
+    Returns '' when nothing is set (default pipeline unaffected).
+    """
+    parts = []
+
+    if ctx.research_brief:
+        block = ctx.research_brief.to_prompt_context()
+        if block:
+            parts.append(block)
+
+    baselines = ctx.custom_baselines or (ctx.research_brief.baselines if ctx.research_brief else None)
+    if baselines and not ctx.research_brief:
+        lines = []
+        for b in baselines:
+            line = f"- {b.name}"
+            if getattr(b, "category", None):
+                line += f" [{b.category}]"
+            if getattr(b, "description", None):
+                line += f": {b.description}"
+            lines.append(line)
+        parts.append("**Required baselines (cover exactly these):**\n" + "\n".join(lines))
+
+    ablation = ctx.custom_ablation or (ctx.research_brief.ablation_dims if ctx.research_brief else None)
+    if ablation and not ctx.research_brief:
+        lines = []
+        for a in ablation:
+            line = f"- {a.name}"
+            if getattr(a, "dimension", None):
+                line += f" (removes: {a.dimension})"
+            if getattr(a, "purpose", None):
+                line += f" — {a.purpose}"
+            lines.append(line)
+        parts.append("**Required ablation studies (cover exactly these dimensions):**\n" + "\n".join(lines))
+
+    try:
+        from utils.venue_templates import compose_prompt_extras
+        venue = ctx.venue_target or (ctx.research_brief.venue_target if ctx.research_brief else None)
+        extras = compose_prompt_extras(venue, ctx.academic_level)
+        if extras:
+            parts.append(extras.strip())
+    except Exception as e:  # venue lookup must never break compose
+        logger.warning(f"Venue block injection skipped: {e}")
+
+    if not parts:
+        return ""
+    return "\n\n**AUTHOR RESEARCH DIRECTIVES (authoritative — obey over generic defaults):**\n\n" + "\n\n".join(parts)
+
+
+def _custom_sections(ctx: DraftContext) -> List[SectionSpec]:
+    if ctx.custom_outline:
+        return ctx.custom_outline
+    if ctx.research_brief and ctx.research_brief.output_sections:
+        return ctx.research_brief.output_sections
+    return []
+
+
+def _section_spec_for(ctx: DraftContext, role: str) -> Optional[SectionSpec]:
+    """Find the author's SectionSpec mapped to a standard compose slot, if any."""
+    for s in _custom_sections(ctx):
+        if s.role == role:
+            return s
+    return None
+
+
+def _spec_requirements(spec: Optional[SectionSpec], default_target) -> str:
+    """Extra prompt requirements from a SectionSpec (word target override, subsections, style)."""
+    if spec is None:
+        return ""
+    lines = []
+    target = spec.target_words if spec.target_words else default_target
+    lines.append(f"- **Word count for this section:** {target} words minimum")
+    if spec.required_subsections:
+        subs = "; ".join(spec.required_subsections)
+        lines.append(f"- **Required subsections (use these exact titles as ### subsections):** {subs}")
+    if spec.writing_style_hint:
+        lines.append(f"- **Writing style:** {spec.writing_style_hint}")
+    if spec.specific_citations:
+        lines.append(f"- **Must cite (from citation database where possible):** {', '.join(spec.specific_citations)}")
+    if spec.content_notes:
+        lines.append(f"- **Author notes:** {spec.content_notes}")
+    if not lines:
+        return ""
+    return "\n**SECTION REQUIREMENTS FROM AUTHOR OUTLINE:**\n" + "\n".join(lines) + "\n"
+
+
+def run_compose_phase(ctx: DraftContext) -> PhaseResult:
     """
     Execute the compose phase: 7 sequential Crafter agents.
 
     Mutates ctx: intro_output, lit_review_output, methodology_output,
                  results_output, discussion_output, body_output,
                  conclusion_output, appendix_output
+    Returns: PhaseResult with draft file artifacts
     """
     from utils.agent_runner import run_agent, rate_limit_delay
+
+    phase_start = time.time()
 
     logger.info("=" * 80)
     logger.info("PHASE 3: COMPOSE - Writing chapters")
@@ -53,11 +154,54 @@ def run_compose_phase(ctx: DraftContext) -> None:
     _merge_body_sections(ctx)
     rate_limit_delay()
 
+    _write_custom_sections(ctx)
+    rate_limit_delay()
+
     _write_conclusion(ctx)
     rate_limit_delay()
 
     _write_appendices(ctx)
     rate_limit_delay()
+
+    drafts_dir = ctx.folders['drafts'] if ctx.folders else None
+    artifacts = {}
+    if drafts_dir:
+        for key, name in [
+            ("introduction", "01_introduction.md"),
+            ("literature_review", "02_1_literature_review.md"),
+            ("methodology", "02_2_methodology.md"),
+            ("results", "02_3_analysis_results.md"),
+            ("discussion", "02_4_discussion.md"),
+            ("main_body", "02_main_body.md"),
+            ("conclusion", "03_conclusion.md"),
+            ("appendices", "04_appendices.md"),
+        ]:
+            p = drafts_dir / name
+            if p.exists():
+                artifacts[key] = str(p)
+        custom_dir = drafts_dir / "custom_sections"
+        if custom_dir.exists():
+            artifacts["custom_sections_dir"] = str(custom_dir)
+
+    word_counts = {
+        k: len((v or "").split())
+        for k, v in [
+            ("introduction", ctx.intro_output),
+            ("literature_review", ctx.lit_review_output),
+            ("methodology", ctx.methodology_output),
+            ("results", ctx.results_output),
+            ("discussion", ctx.discussion_output),
+            ("conclusion", ctx.conclusion_output),
+        ]
+    }
+
+    return PhaseResult(
+        phase="compose",
+        status=PhaseStatus.SUCCESS,
+        artifacts=artifacts,
+        metrics={"word_counts": word_counts, "llm_calls": 7 + len(_custom_sections(ctx))},
+        duration_seconds=time.time() - phase_start,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +212,10 @@ def run_compose_phase(ctx: DraftContext) -> None:
 def _write_introduction(ctx: DraftContext) -> None:
     from utils.agent_runner import run_agent
 
-    intro_target = ctx.word_targets['introduction']
+    spec = _section_spec_for(ctx, "introduction")
+    directives = _research_directives(ctx)
+    title_line = f"Write {spec.title}:" if spec else "Write Introduction:"
+    intro_target = spec.target_words if (spec and spec.target_words) else ctx.word_targets['introduction']
     logger.info("[CHAPTER 1/4] Starting Introduction")
     chapter_start = time.time()
 
@@ -80,9 +227,10 @@ def _write_introduction(ctx: DraftContext) -> None:
             model=ctx.model,
             name="Crafter - Introduction",
             prompt_path="prompts/03_compose/crafter.md",
-            user_input=f"""Write Introduction:
+            user_input=f"""{title_line}
 
 Topic: {ctx.topic}
+{directives}
 
 Outline:
 {ctx.formatter_output[:2000]}{ctx.citation_summary}
@@ -91,7 +239,7 @@ Outline:
 1. Write {intro_target} words minimum
 2. Include at least 1-2 tables (if relevant)
 3. **Table constraints**: Maximum 300 chars per cell, maximum 5 columns
-4. Put table details in prose paragraphs AFTER tables, not inside cells{ctx.language_instruction}""",
+4. Put table details in prose paragraphs AFTER tables, not inside cells{_spec_requirements(spec, intro_target)}{ctx.language_instruction}""",
             save_to=ctx.folders['drafts'] / "01_introduction.md",
             skip_validation=ctx.skip_validation,
             verbose=ctx.verbose,
@@ -127,7 +275,10 @@ Outline:
 def _write_literature_review(ctx: DraftContext) -> None:
     from utils.agent_runner import run_agent
 
-    lit_review_target = ctx.word_targets['literature_review']
+    spec = _section_spec_for(ctx, "literature_review")
+    directives = _research_directives(ctx)
+    section_title = spec.title if spec else "2.1 Literature Review"
+    lit_review_target = spec.target_words if (spec and spec.target_words) else ctx.word_targets['literature_review']
     logger.info("[SECTION 2.1/4] Starting Literature Review")
     section_start = time.time()
 
@@ -139,9 +290,10 @@ def _write_literature_review(ctx: DraftContext) -> None:
             model=ctx.model,
             name="Crafter - Literature Review",
             prompt_path="prompts/03_compose/crafter.md",
-            user_input=f"""Write section 2.1 Literature Review for this draft.
+            user_input=f"""Write section {section_title} for this draft.
 
 Topic: {ctx.topic}
+{directives}
 
 Research summaries and abstracts:
 {ctx.scribe_output[:3000]}
@@ -153,8 +305,8 @@ Outline context:
 
 **CRITICAL REQUIREMENTS:**
 
-1. **Section numbering:** Start with ## 2.1 Literature Review
-2. **Subsections:** Use ### 2.1.1, ### 2.1.2, etc. (at least 3 subsections)
+1. **Section numbering:** Start with ## {section_title}
+2. **Subsections:** Use ### subsections (at least 3 subsections)
 3. **Word count:** {lit_review_target} words minimum
 4. **Tables:** Include at least 1-2 comparison tables (e.g., Author vs. Findings)
    - **Maximum 300 characters per cell** - keep cells concise!
@@ -177,7 +329,7 @@ Outline context:
 - Evolution of the field
 - Research gaps that your draft will address
 
-**Use the abstracts provided to write evidence-based literature review with specific findings, NOT generic statements.**{ctx.language_instruction}""",
+**Use the abstracts provided to write evidence-based literature review with specific findings, NOT generic statements.**{_spec_requirements(spec, lit_review_target)}{ctx.language_instruction}""",
             save_to=ctx.folders['drafts'] / "02_1_literature_review.md",
             skip_validation=ctx.skip_validation,
             verbose=ctx.verbose,
@@ -210,7 +362,29 @@ Outline context:
 def _write_methodology(ctx: DraftContext) -> None:
     from utils.agent_runner import run_agent
 
-    methodology_target = ctx.word_targets['methodology']
+    spec = _section_spec_for(ctx, "methodology")
+    directives = _research_directives(ctx)
+    section_title = spec.title if spec else "2.2 Methodology"
+    methodology_target = spec.target_words if (spec and spec.target_words) else ctx.word_targets['methodology']
+
+    baselines = ctx.custom_baselines or (ctx.research_brief.baselines if ctx.research_brief else None)
+    ablation = ctx.custom_ablation or (ctx.research_brief.ablation_dims if ctx.research_brief else None)
+    baseline_block = ""
+    if baselines:
+        baseline_lines = "\n".join(f"   - {b.name}" + (f" ({b.description})" if getattr(b, 'description', None) else "") for b in baselines)
+        baseline_block = f"""
+**REQUIRED BASELINE SUBSECTION (author-specified — do not substitute your own selection):**
+Include a subsection describing the evaluation setup against exactly these baselines:
+{baseline_lines}
+"""
+    ablation_block = ""
+    if ablation:
+        ablation_lines = "\n".join(f"   - {a.name}" + (f" — removes {a.dimension}" if getattr(a, 'dimension', None) else "") for a in ablation)
+        ablation_block = f"""
+**REQUIRED ABLATION SUBSECTION (author-specified — cover exactly these dimensions):**
+{ablation_lines}
+"""
+
     logger.info("[SECTION 2.2/4] Starting Methodology")
     section_start = time.time()
 
@@ -222,9 +396,10 @@ def _write_methodology(ctx: DraftContext) -> None:
             model=ctx.model,
             name="Crafter - Methodology",
             prompt_path="prompts/03_compose/crafter.md",
-            user_input=f"""Write section 2.2 Methodology for this draft.
+            user_input=f"""Write section {section_title} for this draft.
 
 Topic: {ctx.topic}
+{directives}
 
 Literature Review context (what was identified):
 {ctx.lit_review_output[-2000:]}
@@ -239,8 +414,8 @@ Outline:
 
 **CRITICAL REQUIREMENTS:**
 
-1. **Section numbering:** Start with ## 2.2 Methodology
-2. **Subsections:** Use ### 2.2.1, ### 2.2.2, etc. (at least 2-3 subsections)
+1. **Section numbering:** Start with ## {section_title}
+2. **Subsections:** Use ### subsections (at least 2-3 subsections)
 3. **Word count:** {methodology_target} words minimum
 4. **Tables:** Include at least 1 methodology summary table
    - **Maximum 300 characters per cell** - keep cells concise!
@@ -248,7 +423,7 @@ Outline:
    - Put details in prose AFTER the table, not inside cells
 5. **Build on Literature Review:** Reference gaps identified in section 2.1
 6. **Citations:** ONLY use citations from the CITATION DATABASE above with {{cite_XXX}} format
-
+{baseline_block}{ablation_block}{_spec_requirements(spec, methodology_target)}
 **CITATION-CLAIM VERIFICATION:**
 - Before using a citation, verify it actually supports your claim
 - Check the citation's title/abstract matches the methodology you're describing
@@ -304,7 +479,28 @@ Outline:
 def _write_results(ctx: DraftContext) -> None:
     from utils.agent_runner import run_agent
 
-    results_target = ctx.word_targets['results']
+    spec = _section_spec_for(ctx, "results")
+    directives = _research_directives(ctx)
+    section_title = spec.title if spec else "2.3 Analysis and Results"
+    results_target = spec.target_words if (spec and spec.target_words) else ctx.word_targets['results']
+
+    metrics = ctx.research_brief.metrics if ctx.research_brief else None
+    split_strategy = ctx.research_brief.split_strategy if ctx.research_brief else None
+    eval_protocol_block = ""
+    if metrics or split_strategy:
+        lines = []
+        if metrics:
+            m_lines = []
+            for m in metrics:
+                ml = m.name + (f" (K={m.k_value})" if m.k_value is not None else "")
+                if m.priority:
+                    ml += f" [{m.priority}]"
+                m_lines.append(ml)
+            lines.append(f"- **Report these metrics, in this order:** {'; '.join(m_lines)}")
+        if split_strategy:
+            lines.append(f"- **Data split:** {split_strategy} — describe evaluation under this split; do not describe random splits")
+        eval_protocol_block = ("\n**EVALUATION PROTOCOL (author-specified):**\n" + "\n".join(lines) + "\n")
+
     logger.info("[SECTION 2.3/4] Starting Analysis and Results")
     section_start = time.time()
 
@@ -316,9 +512,10 @@ def _write_results(ctx: DraftContext) -> None:
             model=ctx.model,
             name="Crafter - Analysis and Results",
             prompt_path="prompts/03_compose/crafter.md",
-            user_input=f"""Write section 2.3 Analysis and Results for this draft.
+            user_input=f"""Write section {section_title} for this draft.
 
 Topic: {ctx.topic}
+{directives}
 
 Methodology used (from section 2.2):
 {ctx.methodology_output[-1500:]}
@@ -333,8 +530,8 @@ Research data:
 
 **CRITICAL REQUIREMENTS:**
 
-1. **Section numbering:** Start with ## 2.3 Analysis and Results
-2. **Subsections:** Use ### 2.3.1, ### 2.3.2, etc. (at least 3 subsections)
+1. **Section numbering:** Start with ## {section_title}
+2. **Subsections:** Use ### subsections (at least 3 subsections)
 3. **Word count:** {results_target} words minimum
 4. **Tables:** Include at least 2-3 data/results tables
    - **Maximum 300 characters per cell** - keep cells concise!
@@ -342,7 +539,7 @@ Research data:
    - Put details in prose AFTER the table, not inside cells
 5. **Synthesize Literature Findings:** Present results FROM CITED SOURCES, not from new research
 6. **Citations:** ONLY use citations from the CITATION DATABASE above with {{cite_XXX}} format
-
+{eval_protocol_block}{_spec_requirements(spec, results_target)}
 **CITATION-CLAIM VERIFICATION:**
 - Before citing a source for a finding, verify the citation actually reports that finding
 - Check citation title/abstract matches the result you're attributing to it
@@ -399,7 +596,10 @@ Research data:
 def _write_discussion(ctx: DraftContext) -> None:
     from utils.agent_runner import run_agent
 
-    discussion_target = ctx.word_targets['discussion']
+    spec = _section_spec_for(ctx, "discussion")
+    directives = _research_directives(ctx)
+    section_title = spec.title if spec else "2.4 Discussion"
+    discussion_target = spec.target_words if (spec and spec.target_words) else ctx.word_targets['discussion']
     logger.info("[SECTION 2.4/4] Starting Discussion")
     section_start = time.time()
 
@@ -411,9 +611,10 @@ def _write_discussion(ctx: DraftContext) -> None:
             model=ctx.model,
             name="Crafter - Discussion",
             prompt_path="prompts/03_compose/crafter.md",
-            user_input=f"""Write section 2.4 Discussion for this draft.
+            user_input=f"""Write section {section_title} for this draft.
 
 Topic: {ctx.topic}
+{directives}
 
 Results (from section 2.3):
 {ctx.results_output[-2000:]}
@@ -428,8 +629,8 @@ Research gaps addressed:
 
 **CRITICAL REQUIREMENTS:**
 
-1. **Section numbering:** Start with ## 2.4 Discussion
-2. **Subsections:** Use ### 2.4.1, ### 2.4.2, etc. (at least 2-3 subsections)
+1. **Section numbering:** Start with ## {section_title}
+2. **Subsections:** Use ### subsections (at least 2-3 subsections)
 3. **Word count:** {discussion_target} words minimum
 4. **Tables:** Include at least 1 summary/implications table
    - **Maximum 300 characters per cell** - keep cells concise!
@@ -465,7 +666,7 @@ You MUST include these explicit phrases to connect back to previous sections:
 
 **Example opening:** "The findings FROM LITERATURE synthesized in section 2.3 reveal significant insights that both align with and extend the theoretical frameworks discussed in section 2.1. As noted in the literature review (section 2.1), previous studies by [Author] {{cite_001}} demonstrated [X]; research findings {{cite_002}}{{cite_003}} confirm this relationship while also revealing [new insight]."
 
-**Remember:** Explicitly reference "section 2.1" at least 3-5 times throughout the Discussion to maintain strong academic coherence. ALWAYS cite sources for any findings discussed.**{ctx.language_instruction}""",
+**Remember:** Explicitly reference "section 2.1" at least 3-5 times throughout the Discussion to maintain strong academic coherence. ALWAYS cite sources for any findings discussed.{_spec_requirements(spec, discussion_target)}**{ctx.language_instruction}""",
             save_to=ctx.folders['drafts'] / "02_4_discussion.md",
             skip_validation=ctx.skip_validation,
             verbose=ctx.verbose,
@@ -493,6 +694,94 @@ You MUST include these explicit phrases to connect back to previous sections:
         if ctx.tracker:
             ctx.tracker.mark_failed(f"Section 2.4 (Discussion) failed: {e}")
         raise
+
+
+def _write_custom_sections(ctx: DraftContext) -> None:
+    """
+    Write author-specified sections that don't map to a standard slot
+    (e.g. "Threat Model", "System Design" for systems-paper structures).
+
+    Output goes to drafts/custom_sections/ and is appended to body_output
+    by _merge_body_sections.
+    """
+    from utils.agent_runner import run_agent
+
+    custom = [s for s in _custom_sections(ctx) if s.role not in
+              ("introduction", "literature_review", "methodology", "results",
+               "discussion", "conclusion", "appendix")]
+    if not custom:
+        return
+
+    directives = _research_directives(ctx)
+    custom_dir = ctx.folders['drafts'] / "custom_sections"
+    custom_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"[CUSTOM] Writing {len(custom)} author-specified custom sections")
+    if ctx.verbose:
+        print(f"   \u270d\ufe0f  Writing {len(custom)} custom section(s): {', '.join(s.title for s in custom)}")
+
+    for i, s in enumerate(custom, start=1):
+        section_start = time.time()
+        target = s.target_words or 800
+        slug = re.sub(r'[^\w\s-]', '', s.title.lower())
+        slug = re.sub(r'[\s_]+', '_', slug).strip('_')[:40] or f"custom_{i}"
+        out_path = custom_dir / f"custom_{i:02d}_{slug}.md"
+
+        sub_block = ""
+        if s.required_subsections:
+            sub_block = "\n**Required subsections (exact titles):**\n" + "\n".join(
+                f"- {sub}" for sub in s.required_subsections)
+        style_block = f"\n**Writing style:** {s.writing_style_hint}" if s.writing_style_hint else ""
+        notes_block = f"\n**Author notes:** {s.content_notes}" if s.content_notes else ""
+        cites_block = ""
+        if s.specific_citations:
+            cites_block = "\n**Must cite (from citation database where possible):** " + ", ".join(s.specific_citations)
+
+        try:
+            output = run_agent(
+                model=ctx.model,
+                name=f"Crafter - Custom Section: {s.title}",
+                prompt_path="prompts/03_compose/crafter.md",
+                user_input=f"""Write the section "{s.title}" for this draft.
+
+Topic: {ctx.topic}
+{directives}
+
+Outline context:
+{ctx.formatter_output[:1500]}
+
+Related draft content:
+- Introduction (excerpt): {ctx.intro_output[:800]}
+- Methodology (excerpt): {ctx.methodology_output[:800]}
+
+{ctx.citation_summary}
+
+**CRITICAL REQUIREMENTS:**
+1. Start with ## {s.title}
+2. Write {target} words minimum
+3. **Citations:** ONLY use citations from the CITATION DATABASE above with {{cite_XXX}} format
+{sub_block}{style_block}{notes_block}{cites_block}{ctx.language_instruction}""",
+                save_to=out_path,
+                skip_validation=ctx.skip_validation,
+                verbose=ctx.verbose,
+                token_tracker=ctx.token_tracker,
+                token_stage=f"crafter_custom_{i}",
+            )
+
+            # custom sections join the body
+            ctx.body_output = (ctx.body_output or "") + "\n\n" + (output or "")
+            body_path = ctx.folders['drafts'] / "02_main_body.md"
+            body_path.write_text(ctx.body_output, encoding="utf-8")
+
+            logger.info(f"[CUSTOM {i}/{len(custom)}] \u2705 {s.title} complete in {time.time() - section_start:.1f}s")
+            if ctx.tracker:
+                ctx.tracker.log_activity(f"\u2705 Custom section '{s.title}' complete", event_type="complete", phase="writing")
+        except Exception as e:
+            logger.error(f"[CUSTOM {i}/{len(custom)}] \u274c FAILED: {e}")
+            logger.error(f"[TRACEBACK] {traceback.format_exc()}")
+            if ctx.tracker:
+                ctx.tracker.mark_failed(f"Custom section '{s.title}' failed: {e}")
+            raise
 
 
 def _merge_body_sections(ctx: DraftContext) -> None:
@@ -539,7 +828,10 @@ def _merge_body_sections(ctx: DraftContext) -> None:
 def _write_conclusion(ctx: DraftContext) -> None:
     from utils.agent_runner import run_agent
 
-    conclusion_target = ctx.word_targets['conclusion']
+    spec = _section_spec_for(ctx, "conclusion")
+    directives = _research_directives(ctx)
+    title_line = f"Write {spec.title}:" if spec else "Write Conclusion:"
+    conclusion_target = spec.target_words if (spec and spec.target_words) else ctx.word_targets['conclusion']
     logger.info("[CHAPTER 3/4] Starting Conclusion")
     chapter_start = time.time()
 
@@ -551,9 +843,10 @@ def _write_conclusion(ctx: DraftContext) -> None:
             model=ctx.model,
             name="Crafter - Conclusion",
             prompt_path="prompts/03_compose/crafter.md",
-            user_input=f"""Write Conclusion:
+            user_input=f"""{title_line}
 
 Topic: {ctx.topic}
+{directives}
 
 Main findings:
 {ctx.body_output[:2000]}
@@ -565,7 +858,7 @@ Main findings:
 2. Include at least 1 summary table (if relevant)
 3. **Table constraints**: Maximum 300 chars per cell, maximum 5 columns
 4. Put table details in prose paragraphs AFTER tables, not inside cells
-5. **Citations:** ONLY use citations from the CITATION DATABASE above with {{cite_XXX}} format{ctx.language_instruction}""",
+5. **Citations:** ONLY use citations from the CITATION DATABASE above with {{cite_XXX}} format{_spec_requirements(spec, conclusion_target)}{ctx.language_instruction}""",
             save_to=ctx.folders['drafts'] / "03_conclusion.md",
             skip_validation=ctx.skip_validation,
             verbose=ctx.verbose,

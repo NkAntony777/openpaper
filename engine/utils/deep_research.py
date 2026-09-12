@@ -57,6 +57,9 @@ except ImportError:
     genai = None
     GeminiModelWrapper = None
 
+from config import get_config
+from .openai_client import OpenAIModelWrapper
+
 logger = logging.getLogger(__name__)
 
 
@@ -97,25 +100,35 @@ class DeepResearchPlanner:
         self.min_sources = min_sources
         self.verbose = verbose
 
-        # Initialize Gemini for planning
+        # Initialize model for planning
         if gemini_model:
             self.model = gemini_model
         else:
-            if not genai:
-                raise ImportError(
-                    "google-genai not installed. "
-                    "Run: pip install google-genai>=1.0.0"
+            config = get_config()
+            if config.model.provider == "openai":
+                self.model = OpenAIModelWrapper(
+                    model_name=config.model.model_name or "gpt-4o-mini",
+                    api_key=config.openai_api_key,
+                    base_url=config.openai_base_url,
+                    temperature=config.model.temperature,
+                    max_tokens=config.model.max_output_tokens or 8192,
                 )
+            else:
+                if not genai:
+                    raise ImportError(
+                        "google-genai not installed. "
+                        "Run: pip install google-genai>=1.0.0"
+                    )
 
-            api_key = api_key or os.getenv('GOOGLE_API_KEY')
-            if not api_key:
-                raise ValueError(
-                    "GOOGLE_API_KEY not found. Set via environment variable or constructor."
-                )
+                api_key = api_key or os.getenv('GOOGLE_API_KEY') or config.google_api_key
+                if not api_key:
+                    raise ValueError(
+                        "GOOGLE_API_KEY not found. Set via environment variable or constructor."
+                    )
 
-            client = genai.Client(api_key=api_key)
-            # Use Gemini 3 Flash Preview for fast research planning
-            self.model = GeminiModelWrapper(client, 'gemini-3-flash-preview')
+                client = genai.Client(api_key=api_key)
+                # Use Gemini 3 Flash Preview for fast research planning
+                self.model = GeminiModelWrapper(client, 'gemini-3-flash-preview')
 
     def create_research_plan(
         self,

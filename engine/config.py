@@ -69,6 +69,7 @@ class ModelConfig:
         valid_openai_models = [
             'gpt-4.1-nano',
         ]
+        allow_any_openai = os.getenv('ALLOW_CUSTOM_OPENAI_MODEL', 'true').lower() == 'true'
 
         if self.provider == 'gemini' and self.model_name not in valid_gemini_models:
             raise ValueError(
@@ -76,7 +77,11 @@ class ModelConfig:
                 f"Valid options: {', '.join(valid_gemini_models)}"
             )
 
-        if self.provider == 'openai' and self.model_name not in valid_openai_models:
+        if (
+            self.provider == 'openai'
+            and self.model_name not in valid_openai_models
+            and not allow_any_openai
+        ):
             raise ValueError(
                 f"Invalid OpenAI model: {self.model_name}. "
                 f"Valid options: {', '.join(valid_openai_models)}"
@@ -128,6 +133,13 @@ class AppConfig:
     google_api_key_fallback_3: str = field(default_factory=lambda: os.getenv('GOOGLE_API_KEY_FALLBACK_3', ''))
     anthropic_api_key: str = field(default_factory=lambda: os.getenv('ANTHROPIC_API_KEY', ''))
     openai_api_key: str = field(default_factory=lambda: os.getenv('OPENAI_API_KEY', ''))
+    openai_base_url: str = field(
+        default_factory=lambda: (
+            os.getenv('OPENAI_BASE_URL')
+            or os.getenv('OPENAI_API_BASE')
+            or os.getenv('OPENAI_API_URL', '')
+        )
+    )
 
     # Sub-configurations
     model: ModelConfig = field(default_factory=ModelConfig)

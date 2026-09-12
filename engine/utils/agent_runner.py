@@ -12,6 +12,7 @@ import time
 import logging
 import os
 import json
+import re
 from pathlib import Path
 from typing import Optional, Callable, Tuple, List, TYPE_CHECKING, Any, Dict
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
@@ -49,6 +50,7 @@ from utils.output_validators import ValidationResult
 from utils.api_citations.orchestrator import CitationResearcher
 from utils.citation_database import Citation
 from utils.gemini_client import GeminiModelWrapper
+from utils.openai_client import OpenAIModelWrapper
 from utils.deep_research import DeepResearchPlanner
 from utils.token_tracker import CallStatus
 
@@ -56,20 +58,97 @@ from utils.token_tracker import CallStatus
 logger = logging.getLogger(__name__)
 
 
+def _extract_anchor_terms(topic: str) -> List[str]:
+    if not topic:
+        return []
+
+    english_stop = {
+        "the", "and", "with", "for", "from", "into", "using", "based", "approach",
+        "system", "study", "research", "method", "model", "framework", "analysis",
+        "design", "application", "applications", "survey", "review",
+    }
+    generic_cn = {
+        "研究", "系统", "方法", "模型", "架构", "设计", "分析", "应用", "探索", "综述",
+    }
+    cn_particles = ["的", "和", "与", "及", "以及", "基于", "在", "于", "对", "通过", "结合", "融合"]
+
+    anchors: List[str] = []
+    seen = set()
+
+    topic_lower = topic.lower()
+    for token in re.findall(r"[a-z0-9][a-z0-9\-]{1,}", topic_lower):
+        token = token.strip("-")
+        if len(token) < 3 or token in english_stop:
+            continue
+        if token not in seen:
+            anchors.append(token)
+            seen.add(token)
+
+    cn_segments = re.findall(r"[\u4e00-\u9fff]+", topic)
+    if cn_segments:
+        split_re = "|".join(re.escape(p) for p in cn_particles)
+        for segment in cn_segments:
+            parts = re.split(split_re, segment)
+            for part in parts:
+                part = part.strip()
+                if len(part) < 2 or part in generic_cn:
+                    continue
+                if part not in seen:
+                    anchors.append(part)
+                    seen.add(part)
+
+    return anchors
+
+
+def _contains_term(text: str, term: str) -> bool:
+    if not text or not term:
+        return False
+    if any(ord(c) > 127 for c in term) or " " in term or "-" in term:
+        return term in text
+    return re.search(rf"\b{re.escape(term)}\b", text) is not None
+
+
+def _is_citation_relevant(citation: Citation, anchor_terms: List[str]) -> bool:
+    if not anchor_terms:
+        return True
+    parts = [
+        citation.title or "",
+        getattr(citation, "abstract", "") or "",
+        getattr(citation, "journal", "") or "",
+        getattr(citation, "publisher", "") or "",
+    ]
+    text = " ".join(parts).lower()
+    matches = sum(1 for term in anchor_terms if _contains_term(text, term))
+    return matches >= 1
+
+
 def setup_model(model_override: Optional[str] = None) -> Any:
     """
-    Initialize and return configured Gemini model wrapper.
+    Initialize and return configured model wrapper.
 
     Args:
         model_override: Optional model name to override config default
 
     Returns:
-        GeminiModelWrapper: Configured model wrapper with generate_content() method
+        Model wrapper with generate_content() method
 
     Raises:
         ValueError: If API key is missing or model name is invalid
     """
     config = get_config()
+
+    model_name = model_override or config.model.model_name
+
+    if config.model.provider == "openai":
+        if not config.openai_api_key:
+            raise ValueError("OPENAI_API_KEY required for OpenAI-compatible models")
+        return OpenAIModelWrapper(
+            model_name=model_name,
+            api_key=config.openai_api_key,
+            base_url=config.openai_base_url,
+            temperature=config.model.temperature,
+            max_tokens=config.model.max_output_tokens or 8192,
+        )
 
     if not config.google_api_key:
         raise ValueError(
@@ -77,8 +156,6 @@ def setup_model(model_override: Optional[str] = None) -> Any:
         )
 
     client = genai.Client(api_key=config.google_api_key)
-    model_name = model_override or config.model.model_name
-
     return GeminiModelWrapper(
         client=client,
         model_name=model_name,
@@ -565,6 +642,7 @@ def research_citations_via_api(
     output_path: Optional[Path] = None,
     target_minimum: int = 50,
     verbose: bool = True,
+    enforce_quality_gate: bool = True,
     # Deep Research Mode parameters
     use_deep_research: bool = False,
     topic: Optional[str] = None,
@@ -868,6 +946,10 @@ def research_citations_via_api(
         "Gemini LLM": 0
     }
     failed_topics: List[str] = []
+    base_topic = scope or topic or (research_topics[0] if research_topics else "")
+    anchor_terms = _extract_anchor_terms(base_topic)
+    if verbose and anchor_terms:
+        safe_print(f"   Relevance filter enabled (anchors: {', '.join(anchor_terms)})")
 
     # Parallel citation research configuration (tier-adaptive)
     config = get_concurrency_config(verbose=False)
@@ -950,26 +1032,38 @@ def research_citations_via_api(
                             safe_print(f"❌ Error: {error[:30]}...")
                         logger.error(f"Citation research failed for '{research_topic}': {error}")
                     elif citations_list:
-                        # Add ALL citations from this query (multiple sources)
-                        citations.extend(citations_list)
-                        # Update source breakdown for all citations
-                        for citation in citations_list:
-                            source = citation.api_source or 'Unknown'
-                            if source in sources_breakdown:
-                                sources_breakdown[source] += 1
-                        if verbose:
-                            # Show all sources found for this query
-                            sources_str = ", ".join([c.api_source or 'Unknown' for c in citations_list])
-                            first_citation = citations_list[0]
-                            authors_str = first_citation.authors[0] if first_citation.authors else "Unknown"
-                            count_str = f" (+{len(citations_list)-1} more)" if len(citations_list) > 1 else ""
-                            safe_print(f"✅ {authors_str} et al. ({first_citation.year}) [{sources_str}]{count_str}")
+                        if anchor_terms:
+                            before_filter = len(citations_list)
+                            citations_list = [c for c in citations_list if _is_citation_relevant(c, anchor_terms)]
+                            filtered_out = before_filter - len(citations_list)
+                            if filtered_out and verbose:
+                                safe_print(f"⚠️  Filtered {filtered_out} off-topic citations")
 
-                        # Check for early stopping within batch
-                        if len(citations) >= early_stop_threshold:
+                        if citations_list:
+                            # Add ALL citations from this query (multiple sources)
+                            citations.extend(citations_list)
+                            # Update source breakdown for all citations
+                            for citation in citations_list:
+                                source = citation.api_source or 'Unknown'
+                                if source in sources_breakdown:
+                                    sources_breakdown[source] += 1
                             if verbose:
-                                safe_print(f"\n⏩ Early stopping: {len(citations)} citations collected")
-                            break
+                                # Show all sources found for this query
+                                sources_str = ", ".join([c.api_source or 'Unknown' for c in citations_list])
+                                first_citation = citations_list[0]
+                                authors_str = first_citation.authors[0] if first_citation.authors else "Unknown"
+                                count_str = f" (+{len(citations_list)-1} more)" if len(citations_list) > 1 else ""
+                                safe_print(f"✅ {authors_str} et al. ({first_citation.year}) [{sources_str}]{count_str}")
+
+                            # Check for early stopping within batch
+                            if len(citations) >= early_stop_threshold:
+                                if verbose:
+                                    safe_print(f"\n⏩ Early stopping: {len(citations)} citations collected")
+                                break
+                        else:
+                            failed_topics.append(research_topic)
+                            if verbose:
+                                safe_print("❌ No relevant citation found")
                     else:
                         failed_topics.append(research_topic)
                         if verbose:
@@ -1010,6 +1104,19 @@ def research_citations_via_api(
                         continue
 
                 if citations_list:
+                    if anchor_terms:
+                        before_filter = len(citations_list)
+                        citations_list = [c for c in citations_list if _is_citation_relevant(c, anchor_terms)]
+                        filtered_out = before_filter - len(citations_list)
+                        if filtered_out and verbose:
+                            safe_print(f"    ⚠️  Filtered {filtered_out} off-topic citations")
+
+                    if not citations_list:
+                        failed_topics.append(research_topic)
+                        if verbose:
+                            safe_print("    ❌ No relevant citation found")
+                        continue
+
                     # #region agent log
                     # Note: json, time, os already imported at module level
                     try:
@@ -1146,8 +1253,12 @@ def research_citations_via_api(
         if len(failed_topics) > 10:
             error_msg += f"  ... and {len(failed_topics) - 10} more\n"
 
-        logger.error(f"Quality gate FAILED: {citation_count} < {minimal_threshold} (minimal threshold)")
-        raise ValueError(error_msg)
+        if enforce_quality_gate:
+            logger.error(f"Quality gate FAILED: {citation_count} < {minimal_threshold} (minimal threshold)")
+            raise ValueError(error_msg)
+        logger.warning(f"Quality gate bypassed: {citation_count} < {minimal_threshold} (minimal threshold)")
+        if verbose:
+            safe_print("⚠️  QUALITY GATE BYPASSED: Strict validation disabled; continuing with fewer citations.\n")
 
     # Format output as Scout-compatible markdown
     markdown_lines = [

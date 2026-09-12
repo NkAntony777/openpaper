@@ -4,18 +4,21 @@ ABOUTME: Citation management phase — deterministic pipeline (no LLM)
 ABOUTME: Deduplication, scraping, filtering, and summary generation
 """
 
+import time
 import logging
 
 from .context import DraftContext
+from .results import PhaseResult, PhaseStatus
 
 logger = logging.getLogger(__name__)
 
 
-def run_citation_management(ctx: DraftContext) -> None:
+def run_citation_management(ctx: DraftContext) -> PhaseResult:
     """
     Execute the citation management pipeline (deterministic, no LLM).
 
     Mutates ctx: citation_database, citation_summary
+    Returns: PhaseResult with citation counts
     """
     from utils.agent_runner import rate_limit_delay
     from utils.citation_database import CitationDatabase, save_citation_database, load_citation_database
@@ -23,6 +26,8 @@ def run_citation_management(ctx: DraftContext) -> None:
     from utils.scrape_citation_titles import TitleScraper
     from utils.scrape_citation_metadata import MetadataScraper
     from utils.citation_quality_filter import CitationQualityFilter
+
+    phase_start = time.time()
 
     if ctx.verbose:
         print("\n📚 PHASE 2.5: CITATION MANAGEMENT")
@@ -93,6 +98,18 @@ def run_citation_management(ctx: DraftContext) -> None:
     ctx.citation_summary = _build_citation_summary(ctx.citation_database)
 
     rate_limit_delay()
+
+    return PhaseResult(
+        phase="citations",
+        status=PhaseStatus.SUCCESS,
+        artifacts={"bibliography": str(citation_db_path)},
+        metrics={
+            "citations_unique": len(ctx.citation_database.citations),
+            "dedup_removed": dedup_stats.get("removed", 0) if isinstance(dedup_stats, dict) else 0,
+            "llm_calls": 0,
+        },
+        duration_seconds=time.time() - phase_start,
+    )
 
 
 def _build_citation_summary(citation_database) -> str:

@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from research_brief import ResearchBrief, SectionSpec, BaselineSpec, AblationSpec
+
 
 @dataclass
 class DraftContext:
@@ -27,8 +29,22 @@ class DraftContext:
     output_type: str = "full"  # 'full' or 'expose'
     citation_style: str = "apa"  # 'apa', 'ieee', or 'nalt'
     skip_validation: bool = True
+    enforce_citation_gate: Optional[bool] = None
+    enforce_quality_gate: Optional[bool] = None
     verbose: bool = True
     blurb: Optional[str] = None
+
+    # Structured research intent (priority: research_brief > blurb > topic)
+    research_brief: Optional[ResearchBrief] = None
+    custom_outline: Optional[List[SectionSpec]] = None
+    custom_baselines: Optional[List[BaselineSpec]] = None
+    custom_ablation: Optional[List[AblationSpec]] = None
+    venue_target: Optional[str] = None
+
+    # Agent-friendly execution modes
+    headless: bool = False   # suppress all human-oriented prints
+    dry_run: bool = False    # plan only: no LLM calls, no file writes
+
 
     # Academic metadata (optional, for cover page)
     author_name: Optional[str] = None
@@ -53,6 +69,10 @@ class DraftContext:
     # Progress reporting (optional)
     tracker: Any = None  # ProgressTracker
     streamer: Any = None  # MilestoneStreamer
+    event_bus: Any = None  # protocols.EventBus (structured event stream)
+
+    # Structured per-phase results (phase name -> PhaseResult)
+    phase_results: Dict[str, Any] = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # Research phase outputs
