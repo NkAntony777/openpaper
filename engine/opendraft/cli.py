@@ -775,7 +775,7 @@ def run_tool_command(argv):
 
 
 def run_harness_command(argv):
-    """Agent harness driver: `opendraft harness section --root DIR --section NAME`.
+    """Agent harness driver: `opendraft harness section|review --root DIR ...`.
 
     Machine-facing: progress goes to stderr; stdout carries exactly one JSON envelope line
     with the DriverResult summary. Exit codes: 0 ok, 1 run failed, 2 usage error.
@@ -792,15 +792,19 @@ def run_harness_command(argv):
                            help="Paper output directory (the agent's working root)")
     p_section.add_argument("--section", required=True,
                            help="Section to write, e.g. literature_review")
-    p_section.add_argument("--model", default=None,
-                           help="pi model pattern (default: env PI_MODEL or minimax-cn/MiniMax-M3)")
-    p_section.add_argument("--max-cost", type=float, default=1.0,
-                           help="Budget in USD before steering wrap-up (default 1.0)")
-    p_section.add_argument("--max-turns", type=int, default=40,
-                           help="Max agent turns before steering wrap-up (default 40)")
+    p_review = sub.add_parser("review", help="Global cross-section review with the pi agent loop")
+    p_review.add_argument("--root", type=Path, required=True,
+                          help="Paper output directory (the agent's working root)")
+    for p in (p_section, p_review):
+        p.add_argument("--model", default=None,
+                       help="pi model pattern (default: env PI_MODEL or minimax-cn/MiniMax-M3)")
+        p.add_argument("--max-cost", type=float, default=1.0,
+                       help="Budget in USD before steering wrap-up (default 1.0)")
+        p.add_argument("--max-turns", type=int, default=40,
+                       help="Max agent turns before steering wrap-up (default 40)")
 
     args = parser.parse_args(argv)
-    if args.harness_cmd != "section":
+    if args.harness_cmd not in ("section", "review"):
         parser.print_help()
         return 2
 
@@ -808,17 +812,23 @@ def run_harness_command(argv):
         print(f"[harness] {msg}", file=sys.stderr, flush=True)
 
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from agent_tools.common import SECTION_FILES
-    if args.section not in SECTION_FILES:
-        _progress(f"error: unknown section '{args.section}' "
-                  f"(valid: {', '.join(sorted(SECTION_FILES))})")
-        return 2
-
     from harness.driver import BudgetConfig, PiDriver
-    from harness.section_task import build_section_prompt
+
+    if args.harness_cmd == "section":
+        from agent_tools.common import SECTION_FILES
+        if args.section not in SECTION_FILES:
+            _progress(f"error: unknown section '{args.section}' "
+                      f"(valid: {', '.join(sorted(SECTION_FILES))})")
+            return 2
+        from harness.section_task import build_section_prompt
+        prompt = build_section_prompt(args.root, args.section)
+        session_name = f"section-{args.section}"
+    else:
+        from harness.review_task import build_review_prompt
+        prompt = build_review_prompt(args.root)
+        session_name = "global-review"
 
     try:
-        prompt = build_section_prompt(args.root, args.section)
         driver = PiDriver(
             root=args.root,
             model=args.model,
@@ -827,8 +837,8 @@ def run_harness_command(argv):
         _progress(f"root={driver.root} model={driver.model} pi={driver.pi_bin}")
         _progress(f"budget: cost<=${args.max_cost} turns<={args.max_turns} — preparing …")
         driver.prepare()
-        _progress(f"prompt ready ({len(prompt)} chars); starting pi session 'section-{args.section}' …")
-        result = driver.run(prompt, name=f"section-{args.section}")
+        _progress(f"prompt ready ({len(prompt)} chars); starting pi session '{session_name}' …")
+        result = driver.run(prompt, name=session_name)
     except Exception as e:
         _progress(f"error: {type(e).__name__}: {e}")
         payload = {"ok": False, "error": f"{type(e).__name__}: {e}"}
@@ -840,12 +850,13 @@ def run_harness_command(argv):
         f"budget_exceeded={result.budget_exceeded}"
     )
 
-    # Final acceptance (design §5.2/T8): the model may finish without self-checking
-    # (the PoC agent verified by hand with grep instead of score_draft). Re-sync the
-    # section file into the checkpoint — the model can edit files with pi's native
-    # write tool, which bypasses write_section's checkpoint sync — then score.
     acceptance = None
-    if result.ok:
+    global_issues_path = None
+    if result.ok and args.harness_cmd == "section":
+        # Final acceptance (design §5.2/T8): the model may finish without self-checking
+        # (the PoC agent verified by hand with grep instead of score_draft). Re-sync the
+        # section file into the checkpoint — the model can edit files with pi's native
+        # write tool, which bypasses write_section's checkpoint sync — then score.
         try:
             from agent_tools.common import sync_checkpoint_section
             from agent_tools.score import run as score_run
@@ -865,6 +876,20 @@ def run_harness_command(argv):
         except Exception as e:
             _progress(f"acceptance check failed: {type(e).__name__}: {e}")
 
+    if result.ok and args.harness_cmd == "review":
+        # The deliverable is the settled markdown issue list — persist it next to the draft.
+        settled = (result.settled_text or "").strip()
+        if not settled:
+            _progress("error: review settled but produced no text")
+            payload = {"ok": False, "error": "review settled but produced no text"}
+            print(json.dumps(payload, ensure_ascii=False))
+            return 1
+        out = driver.root / "global_issues.md"
+        out.write_text(settled, encoding="utf-8")
+        global_issues_path = str(out)
+        issue_count = len([ln for ln in settled.splitlines() if ln.startswith("## GI-")])
+        _progress(f"global issues: {issue_count} -> {out}")
+
     payload = {
         "ok": result.ok,
         "data": {
@@ -874,6 +899,7 @@ def run_harness_command(argv):
             "journal_path": result.journal_path,
             "settled_text": result.settled_text,
             "acceptance": acceptance,
+            "global_issues_path": global_issues_path,
         },
     }
     print(json.dumps(payload, ensure_ascii=False))
@@ -921,6 +947,7 @@ def main():
   opendraft verify             Check system dependencies (PDF, LaTeX)
   opendraft tool <name>        Run an agent tool (JSON envelope on stdout)
   opendraft harness section    Drive one paper section via the pi agent loop
+  opendraft harness review     Global cross-section review via the pi agent loop
   opendraft tldr <file>        Generate 5-bullet TL;DR for any paper
   opendraft digest <file>      Generate 60-second audio digest
   opendraft revise <folder> "instructions"   Revise existing draft
@@ -929,6 +956,7 @@ def main():
 {Colors.BOLD}Examples:{Colors.RESET}
   opendraft tool list
   opendraft harness section --root ./paper --section literature_review
+  opendraft harness review --root ./paper
   opendraft tldr paper.pdf
   opendraft digest paper.pdf --voice josh
   opendraft revise ./output "make the intro longer"

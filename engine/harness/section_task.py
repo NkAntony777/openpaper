@@ -96,7 +96,8 @@ def build_section_prompt(root, section: str) -> str:
         "2. Cite ONLY cite_XXX ids present in research/bibliography.json. Missing a source? Call "
         "search_literature FIRST, then cite the new ids it returns. Never invent citations.",
         "3. Write the complete section with write_section (full markdown in `content`, every "
-        "cited id listed in citations_used).",
+        "cited id listed in citations_used, AND a 1-2 sentence `summary` of the section's core "
+        "claims and key terms — the summary is the global review's input, never skip it).",
         "4. Self-check with score_draft (scope=section). Fix every reported issue: revise_section "
         "for wording/structure/completeness, search_literature + rewrite for thin evidence. "
         "Re-score after fixes until no high-severity issues remain.",

@@ -15,7 +15,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
 import harness.driver as driver_mod
-from agent_tools.common import SECTION_FILES, write_checkpoint
+from agent_tools.common import (
+    FULL_LEDGER_KEY,
+    SECTION_FILES,
+    update_section_status,
+    write_checkpoint,
+)
 from harness.driver import BudgetConfig, DriverResult, PiDriver, _Eof, _Journal
 from harness.paper_map import write_paper_map
 from harness.section_task import build_section_prompt
@@ -750,3 +755,190 @@ def test_kill_process_tree_uses_taskkill_on_nt(tmp_path, monkeypatch):
     driver_mod._kill_process_tree(proc)
     assert calls and calls[0][:3] == ["taskkill", "/F", "/T"]
     assert calls[0][3:] == ["/PID", "1234"]
+
+
+# --------------------------------------------------------------- review task (M2)
+
+
+def _ledger_root(tmp_path):
+    """Fixture root with a checkpoint, two summary-ledger files and a status ledger."""
+    root = tmp_path / "out"
+    root.mkdir()
+    write_checkpoint(root, {
+        "topic": "AI in education",
+        "academic_level": "master",
+        "citation_style": "apa",
+        "language": "en",
+        "word_targets": {},
+    })
+    (root / "drafts" / ".ledger").mkdir(parents=True)
+    (root / "drafts" / ".ledger" / "introduction.summary.md").write_text(
+        "Intro promises a comparative study.", "utf-8")
+    (root / "drafts" / ".ledger" / "literature_review.summary.md").write_text(
+        "Lit review covers A and B.", "utf-8")
+    update_section_status(root, "introduction", status="written", passed=True,
+                          open_issues=[], updated_at="2026-01-01T00:00:00")
+    update_section_status(root, FULL_LEDGER_KEY, last_total=62, last_passed=False,
+                          open_issues=["structure issue somewhere"], updated_at="2026-01-01T00:00:00")
+    return root
+
+
+def test_build_review_prompt_with_ledgers(tmp_path):
+    from harness.review_task import build_review_prompt
+
+    root = _ledger_root(tmp_path)
+    prompt = build_review_prompt(root)
+
+    assert "GLOBAL cross-section review" in prompt
+    assert "AGENTS.md" in prompt
+    assert "section_status.json" in prompt
+    assert "introduction.summary.md" in prompt
+    assert "literature_review.summary.md" in prompt
+    # status digest is inlined
+    assert "introduction: written, score pass" in prompt
+    assert "full draft: 62/100 (fail)" in prompt
+    # the five review dimensions
+    for kw in ("Terminology", "Narrative", "redundancy", "Citation consistency",
+               "Outline conformance"):
+        assert kw in prompt
+    # strict output format contract
+    assert "# Global Issues" in prompt
+    assert "## GI-1 [high|medium|low] scope: global|<section name>" in prompt
+    assert "Issue:" in prompt
+    assert "Suggested fix:" in prompt
+    assert "No cross-section issues found." in prompt
+
+
+def test_build_review_prompt_empty_dir(tmp_path):
+    from harness.review_task import build_review_prompt
+
+    prompt = build_review_prompt(tmp_path / "does_not_exist")
+    assert "# Global Issues" in prompt
+    assert "(status ledger is empty or missing)" in prompt
+    assert "No section summaries found" in prompt
+
+
+# ---------------------------------------------------------- paper map with ledgers
+
+
+def test_paper_map_with_status_and_summary_ledgers(tmp_path):
+    root = _ledger_root(tmp_path)
+    (root / "drafts" / "01_introduction.md").write_text("intro words here", "utf-8")
+
+    write_paper_map(root)
+    text = (root / "AGENTS.md").read_text(encoding="utf-8")
+
+    # extended Sections table with score/issues columns
+    assert "| section | file | target words | words | status | score | issues |" in text
+    assert "| introduction | drafts/01_introduction.md | ? | 3 | written | ✓ | 0 |" in text
+    # open issues block with the full-draft score
+    assert "## Open issues" in text
+    assert "Full draft: 62/100 (fail)" in text
+    # summary block
+    assert "## Section summaries" in text
+    assert "- introduction: Intro promises a comparative study." in text
+    assert "- literature_review: Lit review covers A and B." in text
+
+
+def test_paper_map_without_ledger_keeps_legacy_table(tmp_path):
+    write_checkpoint(tmp_path, {"topic": "T", "word_targets": {}})
+    write_paper_map(tmp_path)
+    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert "| section | file | target words | words | status |" in text
+    assert "score" not in text.split("## Writing discipline")[0].split("| section |")[1][:200]
+    assert "## Open issues" not in text
+
+
+# ------------------------------------------------------------- CLI: harness review
+
+
+def test_cli_harness_review_missing_root_usage_error(tmp_path, monkeypatch):
+    class _Boom:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("PiDriver must not be constructed on usage errors")
+
+    monkeypatch.setattr(driver_mod, "PiDriver", _Boom)
+    from opendraft.cli import run_harness_command
+
+    with pytest.raises(SystemExit) as exc:
+        run_harness_command(["review"])
+    assert exc.value.code == 2
+
+
+def test_cli_harness_review_success_writes_global_issues(tmp_path, monkeypatch, capsys):
+    calls = {}
+
+    class FakeDriver:
+        def __init__(self, root, model=None, pi_bin=None, budget=None):
+            self.root = Path(root)
+            self.model = model
+            self.pi_bin = pi_bin or "fake-pi"
+
+        def prepare(self):
+            calls["prepared"] = True
+
+        def run(self, prompt, name):
+            calls["prompt"] = prompt
+            calls["name"] = name
+            return DriverResult(
+                ok=True,
+                reason="settled",
+                stats={"cost": 0.01, "turns": 2},
+                journal_path=str(tmp_path / "run_journal.jsonl"),
+                settled_text=(
+                    "# Global Issues\n\n"
+                    "## GI-1 [high] scope: global\nIssue: terms drift.\n"
+                    "Suggested fix: unify in methodology.\n\n"
+                    "## GI-2 [low] scope: introduction\nIssue: weak echo.\n"
+                    "Suggested fix: strengthen conclusion.\n"
+                ),
+                budget_exceeded=False,
+            )
+
+    monkeypatch.setattr(driver_mod, "PiDriver", FakeDriver)
+    from opendraft.cli import run_harness_command
+
+    rc = run_harness_command(["review", "--root", str(tmp_path)])
+    assert rc == 0
+
+    out_file = tmp_path / "global_issues.md"
+    assert out_file.exists()
+    assert out_file.read_text(encoding="utf-8").startswith("# Global Issues")
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out.strip().splitlines()[-1])
+    assert payload["ok"] is True
+    assert payload["data"]["global_issues_path"] == str(out_file)
+    assert payload["data"]["settled_text"].startswith("# Global Issues")
+    assert "global issues: 2" in captured.err
+    assert calls["name"] == "global-review"
+    assert "GLOBAL cross-section review" in calls["prompt"]
+
+
+def test_cli_harness_review_empty_settled_text_fails(tmp_path, monkeypatch, capsys):
+    class FakeDriver:
+        def __init__(self, root, model=None, pi_bin=None, budget=None):
+            self.root = Path(root)
+            self.model = model
+            self.pi_bin = pi_bin or "fake-pi"
+
+        def prepare(self):
+            pass
+
+        def run(self, prompt, name):
+            return DriverResult(
+                ok=True, reason="settled", stats={},
+                journal_path=str(tmp_path / "run_journal.jsonl"),
+                settled_text="   ", budget_exceeded=False,
+            )
+
+    monkeypatch.setattr(driver_mod, "PiDriver", FakeDriver)
+    from opendraft.cli import run_harness_command
+
+    rc = run_harness_command(["review", "--root", str(tmp_path)])
+    assert rc == 1
+    assert not (tmp_path / "global_issues.md").exists()
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out.strip().splitlines()[-1])
+    assert payload["ok"] is False
+    assert "no text" in payload["error"]

@@ -14,6 +14,10 @@ from typing import Dict, List, Optional, Set
 CHECKPOINT_NAME = "checkpoint.json"
 BIBLIOGRAPHY_REL = "research/bibliography.json"
 SNAPSHOT_DIR_REL = "drafts/.snapshots"
+SECTION_STATUS_REL = "section_status.json"
+
+# Ledger bucket name used by update_section_status for the whole-draft entry.
+FULL_LEDGER_KEY = "full"
 
 # Standard section -> output file + checkpoint field + word_targets key.
 # Body sections also feed checkpoint "body_output" (rebuilt on every write).
@@ -151,3 +155,51 @@ def sync_checkpoint_section(root: Path, section: str, content: str) -> Dict:
             body_updated = True
     write_checkpoint(root, data)
     return {"checkpoint": "updated", "body": body_updated}
+
+
+# --------------------------------------------------------------------- status ledger
+# section_status.json — the paper-level state ledger the non-linear loop reads to
+# decide what to do next. Structure:
+#   {"sections": {name: {status, words, citations_count, passed, open_issues, ...}},
+#    "full": {last_total, last_passed, open_issues, updated_at}}
+
+
+def read_section_status(root: Path) -> Dict:
+    """Load the status ledger; missing/corrupt files read as an empty ledger."""
+    p = Path(root) / SECTION_STATUS_REL
+    if not p.exists():
+        return {"sections": {}}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {"sections": {}}
+    if not isinstance(data, dict) or not isinstance(data.get("sections"), dict):
+        return {"sections": {}}
+    return data
+
+
+def update_section_status(root: Path, section: str, **fields) -> Dict:
+    """Merge-update one ledger entry (unknown existing fields are preserved) and persist.
+
+    Per-section entries live under "sections"; pass section=FULL_LEDGER_KEY ("full")
+    to update the whole-draft entry. Returns the updated entry dict.
+    """
+    root = Path(root)
+    data = read_section_status(root)
+    if section == FULL_LEDGER_KEY:
+        entry = data.get(FULL_LEDGER_KEY)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry.update(fields)
+        data[FULL_LEDGER_KEY] = entry
+    else:
+        sections = data["sections"]
+        entry = sections.get(section)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry.update(fields)
+        sections[section] = entry
+    (root / SECTION_STATUS_REL).write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    return entry

@@ -234,6 +234,14 @@ const writeSectionSchema = Type.Object({
         "Writes to drafts/custom_sections/custom_<slug>.md.",
     }),
   ),
+  summary: Type.Optional(
+    Type.String({
+      description:
+        "One or two sentences summarizing the section's core claims, key terminology and " +
+        "main cited ids. The global review pass (harness review) reads these summaries, so " +
+        "always provide one. Max 600 characters (truncated beyond that).",
+    }),
+  ),
 });
 
 const scoreDraftSchema = Type.Object({
@@ -356,6 +364,7 @@ export default function (pi: ExtensionAPI) {
       "Use write_section with the COMPLETE section markdown in 'content' — never fragments, never 'continue in next call'.",
       "Use write_section only with cite_XXX ids that search_literature returned or that read_artifact confirmed in research/bibliography.json.",
       "After every write_section call, immediately run score_draft (scope=section) and fix the reported issues before moving on.",
+      "After write_section succeeds, pass a one-two sentence summary of the section's core claims and key terms in 'summary' — the global review pass relies on it.",
     ],
     parameters: writeSectionSchema,
     execute: makeExecute<WriteSectionArgs>("write_section"),

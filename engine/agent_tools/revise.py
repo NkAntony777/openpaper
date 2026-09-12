@@ -10,13 +10,19 @@ import contextlib
 import io
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from agent_tools import registry
-from agent_tools.common import SECTION_FILES, snapshot_existing, sync_checkpoint_section
+from agent_tools.common import (
+    SECTION_FILES,
+    snapshot_existing,
+    sync_checkpoint_section,
+    update_section_status,
+)
 from agent_tools.envelope import ok, fail
-from agent_tools.write_section import _check_guardrails
+from agent_tools.write_section import CITE_REF_RE, _check_guardrails
 
 with contextlib.redirect_stdout(io.StringIO()):
     # utils.revise imports utils.export_professional → utils.pdf_engines → weasyprint,
@@ -204,6 +210,15 @@ def run(args: Dict, root: Path) -> Dict:
     target.write_text(new_text, encoding="utf-8")
     sync = sync_checkpoint_section(root, section, new_text)
 
+    refs = sorted({f"cite_{n}" for n in CITE_REF_RE.findall(new_text)})
+    status_ledger = update_section_status(
+        root, section,
+        status="revised",
+        words=len(new_text.split()),
+        citations_count=len(refs),
+        updated_at=datetime.now().isoformat(timespec="seconds"),
+    )
+
     return ok({
         "section": section,
         "path": rel_path,
@@ -212,6 +227,7 @@ def run(args: Dict, root: Path) -> Dict:
         "missed_replacements": missed,
         "llm_revised": llm_revised,
         "snapshot": snapshot,
+        "status_ledger": status_ledger,
         **sync,
     })
 

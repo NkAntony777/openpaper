@@ -6,6 +6,7 @@ ABOUTME: before overwrite, and checkpoint.json sync (including body_output rebui
 """
 
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -16,12 +17,17 @@ from agent_tools.common import (
     bibliography_ids,
     snapshot_existing,
     sync_checkpoint_section,
+    update_section_status,
     word_target_max,
 )
 from agent_tools.envelope import ok, fail, ToolInputError, resolve_under_root
 
 CITE_REF_RE = re.compile(r"\{cite_(\d+)\}")
 CITE_MISSING_RE = re.compile(r"\{cite_MISSING[^}]*\}", re.IGNORECASE)
+
+# Section-summary ledger: low-token carriers for the global review pass.
+LEDGER_DIR_REL = "drafts/.ledger"
+SUMMARY_MAX_CHARS = 600
 
 # Hard anti-laziness placeholders — rejection (NEW_ISSUES_DEC2025 ticket class)
 HARD_PLACEHOLDER_PATTERNS = [
@@ -66,6 +72,13 @@ INPUT_SCHEMA = {
             "type": "string",
             "description": "Required for section='custom': filename slug, e.g. 'related_work'. "
                            "Writes to drafts/custom_sections/custom_<slug>.md.",
+        },
+        "summary": {
+            "type": "string",
+            "description": "One or two sentences summarizing this section's core claims, key "
+                           "terminology and main cited ids — the global review pass "
+                           "(harness review) reads these summaries, so always provide one. "
+                           "Max 600 characters (truncated beyond that).",
         },
     },
     "required": ["section", "content"],
@@ -121,6 +134,12 @@ def _check_guardrails(content: str, root: Path, section: str) -> Optional[Dict]:
     return None
 
 
+def _summary_ledger_rel(section: str, slug: Optional[str]) -> str:
+    if section == "custom":
+        return f"{LEDGER_DIR_REL}/custom_{slug}.md"
+    return f"{LEDGER_DIR_REL}/{section}.summary.md"
+
+
 def run(args: Dict, root: Path) -> Dict:
     content = args.get("content")
     if not isinstance(content, str) or not content.strip():
@@ -155,6 +174,31 @@ def run(args: Dict, root: Path) -> Dict:
         if undeclared:
             warnings.append(f"citations_used omitted refs present in text: {undeclared}")
 
+    summary_written = None
+    summary_raw = args.get("summary")
+    if summary_raw is not None:
+        if isinstance(summary_raw, str) and summary_raw.strip():
+            summary_text = summary_raw.strip()
+            if len(summary_text) > SUMMARY_MAX_CHARS:
+                summary_text = summary_text[:SUMMARY_MAX_CHARS]
+                warnings.append(f"summary truncated to {SUMMARY_MAX_CHARS} characters")
+            summary_written = _summary_ledger_rel(section, args.get("slug") if section == "custom" else None)
+            ledger_path = Path(root) / summary_written
+            ledger_path.parent.mkdir(parents=True, exist_ok=True)
+            ledger_path.write_text(summary_text, encoding="utf-8")
+        else:
+            warnings.append("summary ignored: must be a non-empty string")
+
+    status_ledger = None
+    if section != "custom":
+        status_ledger = update_section_status(
+            root, section,
+            status="written",
+            words=len(content.split()),
+            citations_count=len(refs),
+            updated_at=datetime.now().isoformat(timespec="seconds"),
+        )
+
     return ok({
         "section": section,
         "path": rel_path,
@@ -162,6 +206,8 @@ def run(args: Dict, root: Path) -> Dict:
         "citations": refs,
         "warnings": warnings,
         "snapshot": snapshot,
+        "summary_ledger": summary_written,
+        "status_ledger": status_ledger,
         **sync,
     })
 

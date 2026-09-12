@@ -708,3 +708,171 @@ class TestCliEnvelope:
         assert code == 1
         assert payload["ok"] is False
         assert "unexpected boom" in payload["error"]
+
+
+class TestStatusLedger:
+    """section_status.json — the paper-level state ledger (M2 non-linear oversight)."""
+
+    def _bib(self, tmp_path):
+        bib = create_empty_database()
+        add_citations_batch(bib, [make_citation("Known Paper", citation_id="cite_001")])
+        save_citation_database(bib, tmp_path / "research" / "bibliography.json")
+
+    def test_write_section_updates_ledger(self, tmp_path):
+        make_checkpoint(tmp_path, word_targets={})
+        self._bib(tmp_path)
+        content = section_content(200, cite="cite_001")
+        result = write_section.run(
+            {"section": "introduction", "content": content, "summary": "Claims X."}, tmp_path
+        )
+        assert result["ok"] is True
+        ledger = result["data"]["status_ledger"]
+        assert ledger["status"] == "written"
+        assert ledger["words"] == len(content.split())
+        assert ledger["citations_count"] == 1
+        assert "updated_at" in ledger
+
+        on_disk = json.loads((tmp_path / "section_status.json").read_text(encoding="utf-8"))
+        assert on_disk["sections"]["introduction"]["status"] == "written"
+
+    def test_revise_updates_ledger_status(self, tmp_path):
+        make_checkpoint(tmp_path, word_targets={})
+        content = "The ALPHA framework improves retention. " + section_content(100)
+        write_section.run({"section": "conclusion", "content": content}, tmp_path)
+        with mock.patch.object(revise, "call_gemini_revise") as llm:
+            result = revise.run(
+                {
+                    "section": "conclusion",
+                    "instructions": "update the name",
+                    "find_replace": [{"find": "ALPHA framework", "replace": "ALPHA-2 framework"}],
+                },
+                tmp_path,
+            )
+        llm.assert_not_called()
+        assert result["ok"] is True
+        assert result["data"]["status_ledger"]["status"] == "revised"
+        assert result["data"]["status_ledger"]["words"] == len(
+            (tmp_path / "drafts" / "03_conclusion.md").read_text(encoding="utf-8").split()
+        )
+
+    def test_score_section_ledger_records_failures(self, tmp_path):
+        # empty/missing section: error severity lands in the ledger
+        make_checkpoint(tmp_path, word_targets={})
+        result = score.run({"scope": "section", "section": "introduction"}, tmp_path)
+        assert result["ok"] is True
+        ledger = result["data"]["status_ledger"]
+        assert ledger["passed"] is False
+        assert len(ledger["open_issues"]) == 1
+        assert "empty or missing" in ledger["open_issues"][0]
+
+    def test_score_section_ledger_merges_with_write_entry(self, tmp_path):
+        make_checkpoint(tmp_path, word_targets={})
+        content = section_content(100)
+        write_section.run({"section": "introduction", "content": content}, tmp_path)
+
+        # raise the bar after the write: score now reports the word_count warning
+        make_checkpoint(tmp_path, word_targets={"introduction": "2000-2500"})
+        result = score.run({"scope": "section", "section": "introduction"}, tmp_path)
+        assert result["ok"] is True
+        ledger = result["data"]["status_ledger"]
+        assert ledger["passed"] is False
+        assert any("section short" in i for i in ledger["open_issues"])
+        # merge update: the write_section fields survive scoring
+        assert ledger["status"] == "written"
+        assert ledger["words"] == len(content.split())
+
+    def test_score_section_ledger_records_pass(self, tmp_path):
+        make_checkpoint(tmp_path, word_targets={})
+        write_section.run({"section": "conclusion", "content": section_content(100)}, tmp_path)
+        result = score.run({"scope": "section", "section": "conclusion"}, tmp_path)
+        assert result["data"]["status_ledger"]["passed"] is True
+        assert result["data"]["status_ledger"]["open_issues"] == []
+
+    def test_score_full_updates_full_entry(self, tmp_path):
+        make_checkpoint(tmp_path, word_targets={})
+        write_section.run({"section": "introduction", "content": section_content(100)}, tmp_path)
+        write_section.run({"section": "conclusion", "content": section_content(100)}, tmp_path)
+
+        result = score.run({"scope": "full"}, tmp_path)
+        assert result["ok"] is True
+        ledger = result["data"]["status_ledger"]
+        assert isinstance(ledger["last_total"], int)
+        assert isinstance(ledger["last_passed"], bool)
+        assert isinstance(ledger["open_issues"], list)
+        on_disk = json.loads((tmp_path / "section_status.json").read_text(encoding="utf-8"))
+        assert on_disk["full"]["last_total"] == ledger["last_total"]
+        # section entries live in their own bucket
+        assert "last_total" not in on_disk["sections"]["introduction"]
+
+    def test_merge_preserves_unknown_fields(self, tmp_path):
+        make_checkpoint(tmp_path, word_targets={})
+        write_section.run({"section": "conclusion", "content": section_content(50)}, tmp_path)
+        p = tmp_path / "section_status.json"
+        data = json.loads(p.read_text(encoding="utf-8"))
+        data["sections"]["conclusion"]["reviewed_by"] = "human"
+        p.write_text(json.dumps(data), encoding="utf-8")
+
+        write_section.run({"section": "conclusion", "content": section_content(80)}, tmp_path)
+        data = json.loads(p.read_text(encoding="utf-8"))
+        assert data["sections"]["conclusion"]["reviewed_by"] == "human"
+        assert data["sections"]["conclusion"]["status"] == "written"
+
+    def test_custom_section_skips_status_ledger(self, tmp_path):
+        result = write_section.run(
+            {"section": "custom", "slug": "extra_bits", "content": section_content(50),
+             "summary": "Extra material."},
+            tmp_path,
+        )
+        assert result["ok"] is True
+        assert result["data"]["status_ledger"] is None
+        assert not (tmp_path / "section_status.json").exists()
+        assert result["data"]["summary_ledger"] == "drafts/.ledger/custom_extra_bits.md"
+        assert (tmp_path / "drafts" / ".ledger" / "custom_extra_bits.md").exists()
+
+
+class TestSectionSummaryLedger:
+    """drafts/.ledger/*.md — low-token summaries feeding the global review pass."""
+
+    def test_summary_written_to_ledger(self, tmp_path):
+        make_checkpoint(tmp_path, word_targets={})
+        result = write_section.run(
+            {"section": "literature_review", "content": section_content(100),
+             "summary": "Reviews prior work on X; key terms: a, b."},
+            tmp_path,
+        )
+        assert result["ok"] is True
+        rel = result["data"]["summary_ledger"]
+        assert rel == "drafts/.ledger/literature_review.summary.md"
+        assert (tmp_path / rel).read_text(encoding="utf-8") == "Reviews prior work on X; key terms: a, b."
+
+    def test_overlong_summary_truncated_with_warning(self, tmp_path):
+        make_checkpoint(tmp_path, word_targets={})
+        result = write_section.run(
+            {"section": "conclusion", "content": section_content(50), "summary": "x" * 700},
+            tmp_path,
+        )
+        assert result["ok"] is True
+        assert any("truncated" in w for w in result["data"]["warnings"])
+        written = (tmp_path / "drafts" / ".ledger" / "conclusion.summary.md").read_text(
+            encoding="utf-8"
+        )
+        assert len(written) == 600
+
+    def test_summary_absent_leaves_no_ledger_file(self, tmp_path):
+        make_checkpoint(tmp_path, word_targets={})
+        result = write_section.run(
+            {"section": "conclusion", "content": section_content(50)}, tmp_path
+        )
+        assert result["ok"] is True
+        assert result["data"]["summary_ledger"] is None
+        assert not (tmp_path / "drafts" / ".ledger").exists()
+
+    def test_summary_field_in_python_and_ts_schema(self, tmp_path):
+        props = write_section.INPUT_SCHEMA["properties"]
+        assert "summary" in props
+        ts_path = (
+            Path(__file__).parent.parent / "engine" / "harness" / "assets" / "opendraft-tools.ts"
+        )
+        ts = ts_path.read_text(encoding="utf-8")
+        assert "summary: Type.Optional(" in ts
+        assert "global review" in ts

@@ -7,16 +7,25 @@ ABOUTME: scope=section gives a per-section check (word floor + placeholders + ci
 
 import re
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from typing import Dict
 
 from agent_tools import registry
-from agent_tools.common import SECTION_FILES, read_checkpoint, word_target_max
+from agent_tools.common import (
+    FULL_LEDGER_KEY,
+    SECTION_FILES,
+    read_checkpoint,
+    update_section_status,
+    word_target_max,
+)
 from agent_tools.envelope import ok, fail, ToolInputError, resolve_under_root
 from utils.quality_gate import STRUCTURE_ERROR_PATTERNS, score_texts
 
 CITE_REF_RE = re.compile(r"\{cite_(\d+)\}")
 CITE_MISSING_RE = re.compile(r"\{cite_MISSING[^}]*\}", re.IGNORECASE)
+
+ISSUE_MESSAGE_MAX = 200  # per-issue cap in the status ledger
 
 DESCRIPTION = (
     "Score draft quality — the feedback signal for revise loops. Read-only: call it after "
@@ -56,6 +65,17 @@ def _read_section_texts(root: Path) -> Dict[str, str]:
     return texts
 
 
+def _open_issue_messages(issues) -> list:
+    """Ledger view of an issues list: error/warning messages only, each capped."""
+    out = []
+    for i in issues:
+        if i.get("severity") in ("error", "warning"):
+            msg = str(i.get("message", ""))[:ISSUE_MESSAGE_MAX]
+            if msg:
+                out.append(msg)
+    return out
+
+
 def _score_full(root: Path) -> Dict:
     hints = _checkpoint_hints(root)
     texts = _read_section_texts(root)
@@ -74,6 +94,14 @@ def _score_full(root: Path) -> Dict:
         academic_level=hints["academic_level"],
         min_citations=hints["min_citations"],
     )
+    issues = [asdict(i) for i in q.structured_issues]
+    status_ledger = update_section_status(
+        root, FULL_LEDGER_KEY,
+        last_total=q.total_score,
+        last_passed=q.passed,
+        open_issues=_open_issue_messages(issues),
+        updated_at=datetime.now().isoformat(timespec="seconds"),
+    )
     return ok({
         "scope": "full",
         "total": q.total_score,
@@ -84,7 +112,8 @@ def _score_full(root: Path) -> Dict:
             "completeness": q.completeness_score,
             "structure": q.structure_score,
         },
-        "issues": [asdict(i) for i in q.structured_issues],
+        "issues": issues,
+        "status_ledger": status_ledger,
     })
 
 
@@ -113,6 +142,14 @@ def _score_section(root: Path, section: str) -> Dict:
 
     hard_failed = any(i["severity"] == "error" for i in issues)
     word_failed = any(i.get("metric") == "word_count" for i in issues)
+    passed = bool(content.strip()) and not hard_failed and not word_failed
+
+    status_ledger = update_section_status(
+        root, section,
+        passed=passed,
+        open_issues=_open_issue_messages(issues),
+        updated_at=datetime.now().isoformat(timespec="seconds"),
+    )
 
     return ok({
         "scope": "section",
@@ -122,7 +159,8 @@ def _score_section(root: Path, section: str) -> Dict:
         "citations": refs,
         "cite_missing_placeholders": len(CITE_MISSING_RE.findall(content)),
         "issues": issues,
-        "passed": bool(content.strip()) and not hard_failed and not word_failed,
+        "passed": passed,
+        "status_ledger": status_ledger,
     })
 
 

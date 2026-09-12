@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """
 ABOUTME: AGENTS.md paper map generator (design doc §7.1).
-ABOUTME: The map is the paper-level "repo map": gives the agent a <=1k-token view of the
-ABOUTME: whole paper so it can decide where to drill in via read_artifact.
+ABOUTME: The map is the paper-level "repo map": gives the agent a <=1.5k-token view of the
+ABOUTME: whole paper so it can decide where to drill in via read_artifact. When the status
+ABOUTME: ledger (section_status.json) and/or the summary ledger (drafts/.ledger/) exist,
+ABOUTME: their digests are rendered as bounded blocks (truncation keeps the map cheap).
 """
 
 import json
@@ -10,7 +12,12 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from agent_tools.common import SECTION_FILES, read_checkpoint
+from agent_tools.common import (
+    SECTION_FILES,
+    SECTION_STATUS_REL,
+    read_checkpoint,
+    read_section_status,
+)
 
 OUTLINE_CANDIDATES = [
     "drafts/00_formatted_outline.md",
@@ -18,6 +25,10 @@ OUTLINE_CANDIDATES = [
 ]
 
 BIBLIOGRAPHY_REL = "research/bibliography.json"
+LEDGER_DIR_REL = "drafts/.ledger"
+OPEN_ISSUES_MAX = 10
+OPEN_ISSUE_MAX_CHARS = 120
+SUMMARY_SNIPPET_MAX_CHARS = 160
 
 
 def _read(root: Path, rel: str) -> str:
@@ -60,6 +71,58 @@ def _section_rows(root: Path) -> List[Dict]:
             "status": "written" if text.strip() else "pending",
         })
     return rows
+
+
+# ------------------------------------------------------------- ledger digest blocks
+
+
+def _score_cells(entry: Optional[Dict]):
+    """(score, issues) display cells for the Sections table, from a ledger entry."""
+    if not isinstance(entry, dict):
+        return "—", "—"
+    passed = entry.get("passed")
+    score = {True: "✓", False: "✗"}.get(passed, "—")
+    issues = entry.get("open_issues")
+    issues_n = str(len(issues)) if isinstance(issues, list) else "—"
+    return score, issues_n
+
+
+def _open_issues_block(status: Dict) -> List[str]:
+    lines = ["## Open issues", ""]
+    full = status.get("full")
+    if isinstance(full, dict) and "last_total" in full:
+        verdict = "pass" if full.get("last_passed") else "fail"
+        lines.append(f"Full draft: {full.get('last_total')}/100 ({verdict})")
+        lines.append("")
+    emitted = 0
+    for name in SECTION_FILES:
+        entry = (status.get("sections") or {}).get(name)
+        if not isinstance(entry, dict):
+            continue
+        for issue in entry.get("open_issues") or []:
+            if emitted >= OPEN_ISSUES_MAX:
+                lines.append(f"- … (further issues in {SECTION_STATUS_REL})")
+                return lines
+            lines.append(f"- {name}: {str(issue)[:OPEN_ISSUE_MAX_CHARS]}")
+            emitted += 1
+    if emitted == 0:
+        lines.append("(none)")
+    return lines
+
+
+def _summaries_block(root: Path) -> List[str]:
+    lines = ["## Section summaries", ""]
+    d = root / LEDGER_DIR_REL
+    files = sorted(p for p in d.glob("*.md") if p.is_file()) if d.is_dir() else []
+    if not files:
+        lines.append("(none yet — write_section's `summary` argument fills this)")
+        return lines
+    for p in files:
+        name = p.name[:-len(".summary.md")] if p.name.endswith(".summary.md") else p.stem
+        first_line = next((ln.strip() for ln in p.read_text(encoding="utf-8").splitlines()
+                           if ln.strip()), "")
+        lines.append(f"- {name}: {first_line[:SUMMARY_SNIPPET_MAX_CHARS]}")
+    return lines
 
 
 def generate_paper_map(root: Path) -> str:
@@ -105,11 +168,28 @@ def generate_paper_map(root: Path) -> str:
 
     lines.append("## Sections")
     lines.append("")
-    lines.append("| section | file | target words | words | status |")
-    lines.append("|---|---|---|---|---|")
-    for row in rows:
-        target = str(word_targets.get(row["section"], "?"))
-        lines.append(f"| {row['section']} | {row['file']} | {target} | {row['words']} | {row['status']} |")
+    has_ledger = (root / SECTION_STATUS_REL).exists()
+    if has_ledger:
+        status = read_section_status(root)
+        lines.append("| section | file | target words | words | status | score | issues |")
+        lines.append("|---|---|---|---|---|---|---|")
+        for row in rows:
+            target = str(word_targets.get(row["section"], "?"))
+            score, issues_n = _score_cells((status.get("sections") or {}).get(row["section"]))
+            lines.append(
+                f"| {row['section']} | {row['file']} | {target} | {row['words']} | "
+                f"{row['status']} | {score} | {issues_n} |"
+            )
+        lines.append("")
+        lines.extend(_open_issues_block(status))
+        lines.append("")
+        lines.extend(_summaries_block(root))
+    else:
+        lines.append("| section | file | target words | words | status |")
+        lines.append("|---|---|---|---|---|")
+        for row in rows:
+            target = str(word_targets.get(row["section"], "?"))
+            lines.append(f"| {row['section']} | {row['file']} | {target} | {row['words']} | {row['status']} |")
     lines.append("")
 
     lines.append("## Writing discipline")
