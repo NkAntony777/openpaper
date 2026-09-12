@@ -1,0 +1,4 @@
+{"ts": "2026-09-12T00:00:00+00:00", "type": "prompt", "summary": "session=section-introduction model=m spent=0.10"}
+{"ts": "2026-09-12T00:02:00+00:00", "type": "prompt", "summary": "session=fix-introduction model=m spent=0.05"}
+{"ts": "2026-09-12T00:03:00+00:00", "type": "prompt", "summary": "session=fix-introduction model=m spent=0.05"}
+{"ts": "2026-09-12T00:04:00+00:00", "type": "prompt", "summary": "session=fix-introduction model=m spent=0.05"}

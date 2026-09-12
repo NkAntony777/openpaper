@@ -427,8 +427,26 @@ class TestVerifyClaims:
         assert result["data"]["verdicts"] == verdicts
         assert result["data"]["count"] == 3
         assert result["data"]["contradicted"] == 1
+        assert result["data"]["find_replace"] == []
         _, kwargs = fake_verifier.verify_claims.call_args
         assert kwargs["max_workers"] == 3
+
+    def test_contradicted_emits_find_replace_for_t4_t6(self, tmp_path):
+        verdicts = [{
+            "claim": "The model reaches 90% accuracy",
+            "verdict": "CONTRADICTED",
+            "confidence": 0.9,
+            "wrong_part": "90%",
+            "correct_value": "72%",
+            "evidence_snippet": "reported 72%",
+            "source_url": "http://x.example",
+        }]
+        result, _ = self._run_ok(tmp_path, verdicts)
+        assert result["ok"] is True
+        assert result["data"]["find_replace"] == [{
+            "find": "90%", "replace": "72%",
+            "claim": "The model reaches 90% accuracy",
+        }]
 
     def test_missing_api_key_not_retryable(self, tmp_path, monkeypatch):
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
@@ -629,16 +647,18 @@ class TestCompileDraft:
 
 
 class TestRegistry:
-    def test_list_tools_returns_seven_without_errors(self):
+    def test_list_tools_returns_all_without_errors(self):
         available, errors = registry.list_tools()
         assert errors == []
         assert sorted(t["name"] for t in available) == [
             "compile_draft",
+            "manage_claims",
             "read_artifact",
             "revise_section",
             "score_draft",
             "search_literature",
             "verify_claims",
+            "write_outline",
             "write_section",
         ]
 
@@ -662,7 +682,7 @@ class TestCliEnvelope:
         code, payload = self._run_cli(capsys, ["list"])
         assert code == 0
         assert payload["ok"] is True
-        assert len(payload["data"]["tools"]) == 7
+        assert len(payload["data"]["tools"]) == 9
         assert payload["data"]["errors"] == []
 
     def test_tool_success_exit_zero(self, capsys, tmp_path):

@@ -9,6 +9,7 @@ ABOUTME: their digests are rendered as bounded blocks (truncation keeps the map 
 
 import json
 import re
+import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -125,6 +126,94 @@ def _summaries_block(root: Path) -> List[str]:
     return lines
 
 
+LESSONS_APPROVED_REL = "lessons/approved"
+LESSON_SNIPPET_MAX_CHARS = 300
+REPO_TEMPLATES_LESSONS = Path(__file__).resolve().parents[2] / "templates" / "lessons"
+
+
+def seed_approved_lessons(root: Path, templates_dir: Optional[Path] = None) -> int:
+    """Copy templates/lessons/*.md into <root>/lessons/approved/ if missing.
+
+    Cross-run memory: humans promote distilled lessons into templates/lessons/;
+    the next paper run picks them up here. Existing approved files are never overwritten.
+    Returns the number of files copied.
+    """
+    src_dir = Path(templates_dir) if templates_dir is not None else REPO_TEMPLATES_LESSONS
+    if not src_dir.is_dir():
+        return 0
+    files = [p for p in sorted(src_dir.glob("*.md")) if p.is_file()]
+    if not files:
+        return 0
+    dest = Path(root) / LESSONS_APPROVED_REL
+    dest.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for src in files:
+        target = dest / src.name
+        if target.exists():
+            continue
+        shutil.copyfile(src, target)
+        n += 1
+    return n
+
+
+def _lessons_block(root: Path) -> List[str]:
+    """Approved distilled lessons (engine/harness/journal_distill.py writes proposals to
+    lessons_proposed.md; humans promote them into lessons/approved/<name>.md)."""
+    lines = ["## Lessons learned", ""]
+    d = root / LESSONS_APPROVED_REL
+    files = sorted(p for p in d.glob("*.md") if p.is_file()) if d.is_dir() else []
+    if not files:
+        lines.append("(none yet — approved lessons from `opendraft harness distill` appear here)")
+        return lines
+    for p in files:
+        text = " ".join(p.read_text(encoding="utf-8").split())
+        lines.append(f"- {p.stem}: {text[:LESSON_SNIPPET_MAX_CHARS]}")
+    return lines
+
+
+def _forbidden_from_ckpt(ckpt: Dict) -> List[str]:
+    brief = ckpt.get("research_brief") or {}
+    if not isinstance(brief, dict):
+        return []
+    raw = brief.get("forbidden_claims") or brief.get("negative_claims") or []
+    if not isinstance(raw, list):
+        return []
+    return [str(c).strip() for c in raw if str(c).strip()]
+
+
+def _claims_digest_block(root: Path) -> List[str]:
+    """Open CONTRADICTED claims from the jsonl ledger. Omitted entirely when unused."""
+    d = root / LEDGER_DIR_REL
+    files = sorted(p for p in d.glob("*.claims.jsonl") if p.is_file()) if d.is_dir() else []
+    if not files:
+        return []
+    lines = ["## Claims ledger", ""]
+    open_n = 0
+    total = 0
+    for p in files:
+        for raw in p.read_text(encoding="utf-8").splitlines():
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                item = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(item, dict):
+                continue
+            total += 1
+            v = item.get("verdict")
+            verdict = v.get("verdict") if isinstance(v, dict) else v
+            res = item.get("resolution") if isinstance(item.get("resolution"), dict) else {}
+            if verdict == "CONTRADICTED" and res.get("status") not in ("revised", "deleted"):
+                open_n += 1
+                claim = str(item.get("claim") or "")[:OPEN_ISSUE_MAX_CHARS]
+                lines.append(f"- OPEN {item.get('id')}: {claim}")
+    if open_n == 0:
+        lines.append(f"(all clean — {total} recorded claim(s), 0 unhandled CONTRADICTED)")
+    return lines
+
+
 def generate_paper_map(root: Path) -> str:
     """Render AGENTS.md content for the output directory. Pure read, no side effects."""
     root = Path(root)
@@ -191,6 +280,12 @@ def generate_paper_map(root: Path) -> str:
             target = str(word_targets.get(row["section"], "?"))
             lines.append(f"| {row['section']} | {row['file']} | {target} | {row['words']} | {row['status']} |")
     lines.append("")
+    lines.extend(_lessons_block(root))
+    lines.append("")
+    claims_block = _claims_digest_block(root)
+    if claims_block:
+        lines.extend(claims_block)
+        lines.append("")
 
     lines.append("## Writing discipline")
     lines.append("")
@@ -202,10 +297,17 @@ def generate_paper_map(root: Path) -> str:
     lines.append("- After each `write_section`, run `score_draft` (scope=section), read the "
                  "issues, and fix them (revise_section for wording, search_literature for thin "
                  "evidence) before moving on.")
-    lines.append("- Key factual claims should be checked with `verify_claims`; apply fixes "
-                 "via `revise_section` find_replace.")
+    lines.append("- Record hard factual claims with `manage_claims` (action=record), verify "
+                 "them, and feed CONTRADICTED `find_replace` pairs into `revise_section`. Then "
+                 "`manage_claims` action=resolve so the finish gate can see they were handled.")
     lines.append("- Ground every paragraph in the research material: read the relevant "
                  "`research/papers/*.md` notes before writing, don't write from memory.")
+    forbidden = _forbidden_from_ckpt(ckpt)
+    if forbidden:
+        lines.append("- FORBIDDEN claims (must NOT appear anywhere; the finish gate scans "
+                     "for them):")
+        for c in forbidden:
+            lines.append(f"  - {c}")
     lines.append("")
 
     lines.append("## Material")
@@ -214,6 +316,8 @@ def generate_paper_map(root: Path) -> str:
                  "`research/research_gaps.md`")
     lines.append(f"- Citation ledger: `{BIBLIOGRAPHY_REL}` + `drafts/citation_summary.md` "
                  f"({bib['count']} entries)")
+    lines.append("- Claims ledger: `drafts/.ledger/*.claims.jsonl` — key factual claims per "
+                 "section, recorded/verified via `manage_claims`")
     lines.append("- Gaps & trends: `research/research_gaps.md`")
     lines.append("")
 

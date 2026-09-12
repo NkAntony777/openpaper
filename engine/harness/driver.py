@@ -9,6 +9,7 @@ ABOUTME: escalation, and appends a run journal (one line per event) for offline 
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -23,7 +24,7 @@ from typing import Callable, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from agent_tools.registry import MODULE_BY_NAME
-from harness.paper_map import write_paper_map
+from harness.paper_map import seed_approved_lessons, write_paper_map
 
 ENGINE_DIR = Path(__file__).parent.parent
 REPO_DIR = ENGINE_DIR.parent
@@ -139,17 +140,28 @@ def _load_engine_dotenv() -> None:
 
 
 def _default_opendraft_bin() -> str:
-    # Prefer the repo's own shim/exe deterministically before PATH fallbacks —
-    # a bare "opendraft" reaching the pi extension becomes spawn ENOENT there.
-    for name in ("opendraft.exe", "opendraft.cmd"):
-        shim = REPO_DIR / ".venv" / "Scripts" / name
-        if shim.exists():
-            return str(shim)
-    for candidate in ("opendraft.exe", "opendraft.cmd", "opendraft"):
+    # Deterministic, shell-free resolution for the pi extension:
+    # 1) the real console script from `pip install -e engine` (CreateProcess-native);
+    # 2) the venv python + an OPENDRAFT_BOOTSTRAP `-c` snippet (set in _build_env).
+    # A .cmd/.bat shim is NOT offered: cmd.exe re-tokenizes arguments, so it cannot
+    # forward our JSON tool args — the extension rejects those wrappers explicitly.
+    exe = REPO_DIR / ".venv" / "Scripts" / "opendraft.exe"
+    if exe.exists():
+        return str(exe)
+    py = REPO_DIR / ".venv" / "Scripts" / "python.exe"
+    if py.exists():
+        return str(py)
+    for candidate in ("opendraft.exe", "opendraft"):
         found = shutil.which(candidate)
         if found:
             return found
     return "opendraft"
+
+
+_PYTHON_BOOTSTRAP = (
+    "import sys; sys.path.insert(0, {engine!r}); "
+    "from opendraft.cli import main; sys.exit(main())"
+).format(engine=str(ENGINE_DIR))
 
 
 def _compact(value, limit: int = 200) -> str:
@@ -198,6 +210,7 @@ class PiDriver:
 
     def prepare(self) -> None:
         """Generate AGENTS.md (paper map) and install the pi extension (overwrite every run)."""
+        seed_approved_lessons(self.root)
         write_paper_map(self.root)
         target = self.root / ".pi" / "extensions" / EXTENSION_SOURCE.name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -211,6 +224,8 @@ class PiDriver:
             env.setdefault("MINIMAX_API_KEY", openai_key)
             env.setdefault("MINIMAX_CN_API_KEY", openai_key)
         env["OPENDRAFT_BIN"] = env.get("OPENDRAFT_BIN") or _default_opendraft_bin()
+        if re.search(r"pythonw?(\.exe)?$", Path(env["OPENDRAFT_BIN"]).name, re.IGNORECASE):
+            env.setdefault("OPENDRAFT_BOOTSTRAP", _PYTHON_BOOTSTRAP)
         return env
 
     def _pi_argv(self, name: str) -> List[str]:

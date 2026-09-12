@@ -43,8 +43,9 @@ DESCRIPTION = (
     "Fact-check draft claims against live web evidence. Each claim gets a verdict: "
     "SUPPORTED, CONTRADICTED, or INSUFFICIENT, plus confidence, an evidence snippet and — "
     "for CONTRADICTED claims — a wrong_part/correct_value pair you can feed straight into "
-    "revise_section's find_replace. Read-only: verification results are NOT persisted. "
-    "Requires GOOGLE_API_KEY (or GEMINI_API_KEY). Network failures are retryable."
+    "revise_section's find_replace (also returned as data.find_replace). Read-only: "
+    "verification results are NOT persisted. Requires GOOGLE_API_KEY (or GEMINI_API_KEY). "
+    "Network failures are retryable."
 )
 
 INPUT_SCHEMA = {
@@ -72,6 +73,27 @@ INPUT_SCHEMA = {
     },
     "required": ["claims"],
 }
+
+
+def verdicts_to_find_replace(verdicts: List[Dict]) -> List[Dict]:
+    """T4→T6 glue: CONTRADICTED verdicts with a wrong_part/correct_value pair become
+    revise_section find_replace entries. Verdicts missing either side are skipped."""
+    pairs: List[Dict] = []
+    for v in verdicts or []:
+        if not isinstance(v, dict) or v.get("verdict") != "CONTRADICTED":
+            continue
+        find = v.get("wrong_part")
+        replace = v.get("correct_value")
+        if not isinstance(find, str) or not find.strip():
+            continue
+        if not isinstance(replace, str):
+            continue
+        pairs.append({
+            "find": find,
+            "replace": replace,
+            "claim": v.get("claim") or "",
+        })
+    return pairs
 
 
 def _probe_network() -> Optional[str]:
@@ -144,6 +166,7 @@ def run(args: Dict, root: Path) -> Dict:
         "verdicts": verdicts,
         "count": len(verdicts),
         "contradicted": sum(1 for v in verdicts if v.get("verdict") == "CONTRADICTED"),
+        "find_replace": verdicts_to_find_replace(verdicts),
     })
 
 

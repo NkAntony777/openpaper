@@ -1,0 +1,1 @@
+{"id": "CL-INTRODUCTION-1", "claim": "The proposed system reaches 99% accuracy on the hidden test set", "verdict": {"verdict": "CONTRADICTED", "confidence": 0.95, "wrong_part": "99%", "correct_value": "72%", "verified_at": "2026-09-12T00:00:00"}}

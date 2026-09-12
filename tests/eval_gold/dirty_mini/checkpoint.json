@@ -1,0 +1,10 @@
+{
+  "topic": "Social dynamics from proximity",
+  "academic_level": "master",
+  "citation_style": "apa",
+  "language": "en",
+  "word_targets": {"introduction": 80, "min_citations": 1},
+  "research_brief": {
+    "forbidden_claims": ["causal relationship between proximity and friendship"]
+  }
+}

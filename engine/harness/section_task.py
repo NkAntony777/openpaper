@@ -80,6 +80,11 @@ def build_section_prompt(root, section: str) -> str:
     if has_summary:
         material.append("- `drafts/citation_summary.md` for a readable view of the ledger.")
 
+    forbidden = []
+    brief = ckpt.get("research_brief") or {}
+    if isinstance(brief, dict):
+        forbidden = [str(c).strip() for c in (brief.get("forbidden_claims") or []) if str(c).strip()]
+
     lines = [
         f"Write the `{section}` section of an academic paper on: {topic}",
         "",
@@ -101,12 +106,25 @@ def build_section_prompt(root, section: str) -> str:
         "4. Self-check with score_draft (scope=section). Fix every reported issue: revise_section "
         "for wording/structure/completeness, search_literature + rewrite for thin evidence. "
         "Re-score after fixes until no high-severity issues remain.",
-        "5. Spot-check the section's 3-5 most important factual claims with verify_claims; fix "
-        "any CONTRADICTED claim with revise_section find_replace (wrong_part/correct_value).",
-        "6. Finish with a plain-text report containing exactly: the file path written, the final "
+        "5. Record the section's 3-5 most important factual claims with manage_claims "
+        "(action=record). Spot-check them with manage_claims action=verify (or "
+        "verify_claims for a one-off). CONTRADICTED verdicts include a find_replace "
+        "list — feed it to revise_section, then manage_claims action=resolve "
+        "(status=revised or deleted). Unresolved CONTRADICTED claims fail the paper "
+        "finish gate.",
+        "6. If writing reveals the outline is wrong, use write_outline (merge=true) "
+        "before continuing — do not silently drift from the plan.",
+        "7. Finish with a plain-text report containing exactly: the file path written, the final "
         "word count, the number of distinct cite_XXX ids used, and the final score_draft score "
         "with any issues you could not resolve.",
     ]
+    if forbidden:
+        lines.extend([
+            "",
+            "FORBIDDEN claims (must NOT appear anywhere in this section — the finish gate "
+            "scans for them):",
+            *[f"- {c}" for c in forbidden],
+        ])
     return "\n".join(lines) + "\n"
 
 
@@ -142,7 +160,9 @@ def build_fix_prompt(root, section: str, issues: List[Dict]) -> str:
         "unique-match edits; use free-text instructions for broader rewrites. Never introduce "
         "citations that are not in research/bibliography.json.",
         "3. Re-check with score_draft (scope=section): the section must still pass its "
-        "guardrails (word floor, no placeholders). Fix regressions before finishing.",
+        "guardrails (word floor, no placeholders). Fix regressions before finishing. If a "
+        "finding is a factual error, resolve the matching claims-ledger entry "
+        "(manage_claims action=resolve).",
         "4. Finish with a plain-text report: for each finding, FIXED or NOT FIXED with a "
         "one-line reason, plus the final score_draft passed state.",
     ]

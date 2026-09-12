@@ -29,6 +29,8 @@ MODULE_BY_NAME = {
     "verify_claims": "agent_tools.claims",
     "revise_section": "agent_tools.revise",
     "compile_draft": "agent_tools.compile_export",
+    "write_outline": "agent_tools.outline",
+    "manage_claims": "agent_tools.claims_ledger",
 }
 
 _registry: Dict[str, ToolSpec] = {}

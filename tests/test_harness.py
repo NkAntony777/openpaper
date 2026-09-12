@@ -560,7 +560,7 @@ def test_build_section_prompt(tmp_path):
     assert "2500" in prompt  # parsed max of the "2000-2500" target
     assert "drafts/02_1_literature_review.md" in prompt
     for tool in ("read_artifact", "write_section", "score_draft", "search_literature",
-                 "verify_claims", "revise_section"):
+                 "verify_claims", "revise_section", "manage_claims", "write_outline"):
         assert tool in prompt
     assert "AGENTS.md" in prompt
     assert "cite_XXX" in prompt
@@ -1212,11 +1212,22 @@ def test_queue_line_source_timeout_returns_none_not_raises():
         src3(timeout=0.01)
 
 
-def test_default_opendraft_bin_prefers_repo_shim(tmp_path, monkeypatch):
-    """The pi extension spawns OPENDRAFT_BIN with shell:false — a bare 'opendraft'
-    becomes spawn ENOENT there. The repo shim must be found deterministically."""
-    shim = driver_mod.REPO_DIR / ".venv" / "Scripts" / "opendraft.cmd"
-    if not shim.exists():
+def test_default_opendraft_bin_prefers_shell_free_binary(tmp_path, monkeypatch):
+    """The pi extension spawns OPENDRAFT_BIN shell-free — a bare 'opendraft' becomes
+    spawn ENOENT there, and .cmd wrappers cannot forward JSON args. Resolution must be
+    deterministic: console script first, venv python second (with OPENDRAFT_BOOTSTRAP)."""
+    monkeypatch.delenv("OPENDRAFT_BIN", raising=False)
+    monkeypatch.setattr(driver_mod, "_load_engine_dotenv", lambda: None)
+    exe = driver_mod.REPO_DIR / ".venv" / "Scripts" / "opendraft.exe"
+    py = driver_mod.REPO_DIR / ".venv" / "Scripts" / "python.exe"
+    resolved = driver_mod._default_opendraft_bin()
+    if exe.exists():
+        assert resolved == str(exe)
+    elif py.exists():
+        assert resolved == str(py)
+        driver = PiDriver(tmp_path)
+        env = driver._build_env()
+        assert "opendraft.cli" in env["OPENDRAFT_BOOTSTRAP"]
+    else:
         import pytest as _pt
-        _pt.skip("repo venv shim not present")
-    assert driver_mod._default_opendraft_bin() == str(shim)
+        _pt.skip("repo venv not present")

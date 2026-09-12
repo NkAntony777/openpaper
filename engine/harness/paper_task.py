@@ -61,6 +61,11 @@ class PaperResult:
     issues_found: int = 0
     issues_fixed_report: Dict[str, str] = field(default_factory=dict)
     full_score: Optional[int] = None
+    claims_clean: bool = True
+    forbidden_hits: int = 0
+    citation_rate: float = 1.0
+    lessons_proposed: int = 0
+    finish_gaps: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     total_cost: float = 0.0
     journal_paths: List[str] = field(default_factory=list)
@@ -336,6 +341,37 @@ def run_paper(
     except Exception as e:
         _warn(f"full scoring error: {type(e).__name__}: {e}")
 
+    # ------------------------------------------ 5b. finish acceptance (M3 T8)
+    try:
+        from harness.acceptance import run_finish_acceptance
+
+        gate = run_finish_acceptance(root)
+        result.claims_clean = gate.claims_clean
+        result.forbidden_hits = len(gate.forbidden_hits)
+        result.citation_rate = gate.citation_rate
+        result.finish_gaps = list(gate.gaps)
+        if gate.gaps:
+            for g in gate.gaps:
+                _warn(f"finish: {g}")
+        if not gate.passed:
+            result.ok = False
+            _say(f"finish gate FAIL ({len(gate.gaps)} gap(s))")
+        else:
+            _say("finish gate: pass")
+    except Exception as e:
+        _warn(f"finish acceptance error: {type(e).__name__}: {e}")
+
+    # ------------------------------------------ 5c. distill lessons (M4)
+    try:
+        from harness.journal_distill import distill
+
+        if (root / "run_journal.jsonl").exists():
+            summary = distill(root)
+            result.lessons_proposed = int(summary.get("proposed") or 0)
+            _say(f"distill: {result.lessons_proposed} proposed lesson(s)")
+    except Exception as e:
+        _warn(f"distill error: {type(e).__name__}: {e}")
+
     # ------------------------------------------------------------- 6. compile
     if compile_at_end:
         try:
@@ -349,5 +385,6 @@ def run_paper(
         except Exception as e:
             _warn(f"compile error: {type(e).__name__}: {e}")
 
-    result.ok = not failed_sections
+    if failed_sections:
+        result.ok = False
     return result

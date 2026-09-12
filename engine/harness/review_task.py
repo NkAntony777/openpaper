@@ -90,6 +90,9 @@ def build_review_prompt(root) -> str:
         "flag works cited but never used, and claims that should cite a known source but do not.",
         "5. Outline conformance: each section must deliver what the outline assigned it — no "
         "missing promised subsections, no off-scope additions.",
+        "6. Claims ledger: read `drafts/.ledger/*.claims.jsonl` (or manage_claims action=list). "
+        "Flag CONTRADICTED entries that have no resolution, and claims that contradict each "
+        "other across sections.",
         "",
         "Output format — strict markdown and nothing else. Start with the heading "
         f"`{GLOBAL_ISSUES_HEADING}`, then one block per issue, ordered by severity "

@@ -1,0 +1,23 @@
+{
+  "fixtures": [
+    {
+      "id": "clean_mini",
+      "gates": {
+        "require_factcheck_clean": true,
+        "min_citation_rate": 1.0,
+        "max_forbidden_hits": 0,
+        "max_cite_missing": 0,
+        "expect_passed": true
+      }
+    },
+    {
+      "id": "dirty_mini",
+      "gates": {
+        "require_factcheck_dirty": true,
+        "max_citation_rate": 0.5,
+        "min_forbidden_hits": 1,
+        "expect_passed": false
+      }
+    }
+  ]
+}

@@ -11,14 +11,18 @@
  * are re-thrown as Error with retry guidance, which is what feeds the failure back to the LLM
  * without ever interrupting the agent loop.
  *
- * OPENDRAFT_BIN: absolute path to the opendraft executable is preferred (the harness driver
- * sets it to the venv's opendraft.exe). Falls back to "opendraft" resolved on PATH.
+ * OPENDRAFT_BIN: absolute path to the opendraft executable (the harness driver sets it to
+ * the venv's opendraft.exe, or to python.exe together with OPENDRAFT_BOOTSTRAP). Falls back
+ * to "opendraft" resolved on PATH. Windows .cmd/.bat wrappers are REJECTED: cmd.exe
+ * re-tokenizes arguments, so it cannot forward this tool's JSON args intact — spawn is
+ * always shell-free.
  * OPENDRAFT_ROOT: the paper output directory (defaults to pi's cwd).
  */
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { delimiter, sep } from "node:path";
+import { convertToLlm, serializeConversation } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
@@ -32,28 +36,40 @@ type ToolName =
   | "search_literature"
   | "verify_claims"
   | "revise_section"
-  | "compile_draft";
+  | "compile_draft"
+  | "write_outline"
+  | "manage_claims";
 
 type Envelope =
   | { ok: true; data: unknown }
   | { ok: false; error?: string; is_retryable?: boolean; details?: unknown };
 
-/** Resolve the opendraft executable. Windows cannot spawn bare .cmd names without a shell,
- * so search PATH for the real binary (exe first). */
-function opendraftCommand(): { cmd: string; shell: boolean } {
+/** Resolve the opendraft executable. Never returns a .cmd/.bat on Windows — they are
+ * rejected with an actionable error instead (cmd.exe cannot forward our JSON args). */
+function opendraftCommand(): { cmd: string; bootstrap?: string } {
   const bin = process.env.OPENDRAFT_BIN ?? "opendraft";
-  if (bin !== "opendraft") return { cmd: bin, shell: false };
-  if (process.platform !== "win32") return { cmd: bin, shell: false };
+  const bootstrap = process.env.OPENDRAFT_BOOTSTRAP || undefined;
+  const isWrapper = (p: string) => /\.(cmd|bat)$/i.test(p);
+  if (isWrapper(bin)) {
+    throw new Error(
+      `OPENDRAFT_BIN points at a Windows batch wrapper (${bin}); cmd.exe re-tokenizes ` +
+        `arguments and cannot forward JSON tool args. Point OPENDRAFT_BIN at the opendraft.exe ` +
+        `console script, or at the venv python.exe with OPENDRAFT_BOOTSTRAP set — the harness ` +
+        `driver configures the latter automatically.`,
+    );
+  }
+  if (bin !== "opendraft" && bin !== "opendraft.exe") return { cmd: bin, bootstrap };
+  if (process.platform !== "win32") return { cmd: bin };
   for (const dir of (process.env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
-    for (const name of ["opendraft.exe", "opendraft.cmd", "opendraft.bat", "opendraft"]) {
+    for (const name of ["opendraft.exe", "opendraft"]) {
       const full = dir + sep + name;
       if (existsSync(full)) {
-        return { cmd: full, shell: name.endsWith(".cmd") || name.endsWith(".bat") };
+        return { cmd: full, bootstrap };
       }
     }
   }
-  return { cmd: bin, shell: false };
+  return { cmd: bin, bootstrap };
 }
 
 function lastNonEmptyLine(text: string): string {
@@ -95,15 +111,18 @@ async function runOpendraftTool(
   signal?: AbortSignal,
 ): Promise<string> {
   const root = process.env.OPENDRAFT_ROOT ?? process.cwd();
-  const { cmd, shell } = opendraftCommand();
-  const argv = ["tool", toolName, "--root", root, "--args", JSON.stringify(args ?? {})];
+  const { cmd, bootstrap } = opendraftCommand();
+  const argv = [
+    ...(bootstrap ? ["-c", bootstrap] : []),
+    "tool", toolName, "--root", root, "--args", JSON.stringify(args ?? {}),
+  ];
 
   return new Promise<string>((resolve, reject) => {
     if (signal?.aborted) {
       reject(new Error(`${toolName}: aborted before start`));
       return;
     }
-    const child = spawn(cmd, argv, { shell, windowsHide: true });
+    const child = spawn(cmd, argv, { windowsHide: true });
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -308,6 +327,47 @@ const compileDraftSchema = Type.Object({
   ),
 });
 
+const writeOutlineSchema = Type.Object({
+  content: Type.String({
+    minLength: 1,
+    description: "Full markdown outline content (title line + '## ' headed blocks).",
+  }),
+  merge: Type.Optional(
+    Type.Boolean({
+      default: false,
+      description:
+        "Conservative merge: replace only '## '-headed blocks whose heading also exists in " +
+        "the current outline; keep all other blocks; append new headings. Default false = " +
+        "full overwrite.",
+    }),
+  ),
+});
+
+const manageClaimsSchema = Type.Object({
+  action: StringEnum(["record", "list", "verify", "resolve"] as const),
+  section: sectionEnum,
+  claims: Type.Optional(
+    Type.Array(
+      Type.Object({
+        claim: Type.Optional(Type.String({ minLength: 1 })),
+        line: Type.Optional(Type.String()),
+        id: Type.Optional(Type.String()),
+        status: Type.Optional(StringEnum(["revised", "deleted"] as const)),
+        note: Type.Optional(Type.String()),
+      }),
+      {
+        description:
+          "For action='record': claims to append ({claim, line?}). For action='verify': " +
+          "optional subset to verify (default: all recorded claims without a verdict). " +
+          "For action='resolve': [{id|claim, status=revised|deleted, note?}].",
+      },
+    ),
+  ),
+  max_workers: Type.Optional(
+    Type.Integer({ default: 10, description: "Max parallel verification threads (default 10)." }),
+  ),
+});
+
 type ReadArtifactArgs = Static<typeof readArtifactSchema>;
 type WriteSectionArgs = Static<typeof writeSectionSchema>;
 type ScoreDraftArgs = Static<typeof scoreDraftSchema>;
@@ -315,6 +375,8 @@ type SearchLiteratureArgs = Static<typeof searchLiteratureSchema>;
 type VerifyClaimsArgs = Static<typeof verifyClaimsSchema>;
 type ReviseSectionArgs = Static<typeof reviseSectionSchema>;
 type CompileDraftArgs = Static<typeof compileDraftSchema>;
+type WriteOutlineArgs = Static<typeof writeOutlineSchema>;
+type ManageClaimsArgs = Static<typeof manageClaimsSchema>;
 
 export default function (pi: ExtensionAPI) {
   const makeExecute =
@@ -475,6 +537,55 @@ export default function (pi: ExtensionAPI) {
     execute: makeExecute<CompileDraftArgs>("compile_draft"),
   });
 
+  pi.registerTool({
+    name: "write_outline",
+    label: "Write outline",
+    description:
+      "Write or revise the paper's formatted outline (drafts/00_formatted_outline.md). This " +
+      "is the NON-LINEAR structure-control tool: use it when writing reveals the outline needs " +
+      "restructuring — a section must be split/merged/reordered, subsections added, or the " +
+      "argument flow changed. The new outline is synced into checkpoint.json " +
+      "(formatter_output) so later phases see the new structure. merge=true conservatively " +
+      "replaces only the '## ' blocks whose heading also appears in the new content, keeping " +
+      "everything else. Do NOT use write_outline for section body text (write_section), and do " +
+      "NOT touch the outline when the current structure still fits.",
+    promptSnippet: "Rewrite or merge-revise the paper outline (structure control, not body text)",
+    promptGuidelines: [
+      "Use write_outline when a section's actual content no longer matches the planned outline — revise the plan, then keep writing.",
+      "Use write_outline with merge=true for surgical changes to a few '## ' sections; use the default overwrite for a full re-plan.",
+      "After revising the outline, re-read the affected sections' open issues in AGENTS.md — the structure change may invalidate old score_draft issues.",
+    ],
+    parameters: writeOutlineSchema,
+    execute: makeExecute<WriteOutlineArgs>("write_outline"),
+  });
+
+  pi.registerTool({
+    name: "manage_claims",
+    label: "Manage claims",
+    description:
+      "Manage the paper's persistent claim ledger (drafts/.ledger/<section>.claims.jsonl). " +
+      "action='record' appends claims with stable ids (CL-<SECTION>-<N>) so key factual claims " +
+      "stay auditable across sessions; action='list' reads the ledger back (works offline, no " +
+      "API key); action='verify' fact-checks the recorded claims against live web evidence " +
+      "(FactCheckVerifier) and writes each verdict back into the ledger — CONTRADICTED " +
+      "verdicts include a find_replace list for revise_section (requires GOOGLE_API_KEY); " +
+      "action='resolve' marks a CONTRADICTED claim as revised or deleted after the draft " +
+      "change is on disk (evidence-checked). Unresolved CONTRADICTED entries fail the paper " +
+      "finish gate. Use record right after writing hard factual/quantitative claims, list to " +
+      "audit a section's assertions, verify before compile_draft, and resolve after every " +
+      "CONTRADICTED fix. Do NOT use it for one-off checks you will not persist (verify_claims) " +
+      "or for style/completeness judgment (score_draft).",
+    promptSnippet: "Record, list, or verify the section's persistent claim ledger",
+    promptGuidelines: [
+      "Use manage_claims action='record' after write_section for each hard factual claim (names, dates, numbers, causal assertions), with the draft line it appears on.",
+      "Use manage_claims action='verify' once a section stabilizes; CONTRADICTED verdicts include a find_replace list — feed it to revise_section, then action='resolve'.",
+      "Use manage_claims action='resolve' after the draft change is on disk (status=revised if wrong_part is gone, status=deleted if the claim text is gone).",
+      "Use manage_claims action='list' at review time to audit what the paper asserts before the global review pass.",
+    ],
+    parameters: manageClaimsSchema,
+    execute: makeExecute<ManageClaimsArgs>("manage_claims"),
+  });
+
   // Headless runs (RPC mode, driven by the OpenDraft PiDriver) cannot ask a human, so
   // compile_draft is allowed through. In an interactive TUI, ask first — exports cost time
   // and trigger citation backfill.
@@ -487,6 +598,75 @@ export default function (pi: ExtensionAPI) {
     );
     if (!confirmed) {
       return { block: true, reason: "compile_draft cancelled by user" };
+    }
+  });
+
+  // ---------------------------------------------------- paper-aware compaction (M3b)
+  // pi 0.84.3 exposes compaction to extensions as `session_before_compact`
+  // (dist/core/extensions/types.d.ts: `pi.on("session_before_compact", ...)`); the
+  // `compaction_start` event is UI/RPC-only and never reaches the extension runner.
+  // Returning `{ compaction }` replaces the default summary; returning undefined lets pi
+  // run its own summarizer. We re-run the same summarization through the session's current
+  // model (auth resolved by the model registry) with an added MUST-PRESERVE checklist, so
+  // after a long session's compaction the model still knows:
+  //   1. the paper map lives in AGENTS.md (re-read it — the harness rewrites it per session)
+  //   2. the ledger paths: drafts/.ledger/*.claims.jsonl + *.summary.md
+  //   3. open issues and per-section scores live in section_status.json
+  // Any failure returns undefined → pi's default compaction still runs; compaction is never
+  // blocked by this handler.
+  pi.on("session_before_compact", async (event, ctx) => {
+    const model = ctx.model;
+    if (!model) return undefined; // no model: default path reports the same error
+    const { preparation, signal } = event;
+    const root = process.env.OPENDRAFT_ROOT ?? process.cwd();
+
+    const conversationText = serializeConversation(convertToLlm(preparation.messagesToSummarize));
+    const previousBlock = preparation.previousSummary
+      ? `<previous-summary>\n${preparation.previousSummary}\n</previous-summary>\n\n`
+      : "";
+    const promptText =
+      "You are compacting the conversation of an academic-paper writing agent (OpenDraft). " +
+      "Summarize the conversation so the work can continue after old messages are discarded: " +
+      "goals, decisions taken, files written, tool calls and their outcomes, open issues, and " +
+      "next steps.\n\n" +
+      "MUST-PRESERVE — the summary must explicitly retain these facts:\n" +
+      `- The paper map is ${root}/AGENTS.md (regenerated by the harness each session — re-read it, do not rely on memory).\n` +
+      `- Open issues and per-section scores live in ${root}/section_status.json.\n` +
+      `- The claims ledger is ${root}/drafts/.ledger/*.claims.jsonl and section summaries in ${root}/drafts/.ledger/*.summary.md.\n` +
+      `- Global cross-section issues are in ${root}/global_issues.md (when present).\n` +
+      `- Word targets and the outline are in ${root}/checkpoint.json and ${root}/drafts/00_formatted_outline.md.\n\n` +
+      `<conversation>\n${conversationText}\n</conversation>\n\n${previousBlock}` +
+      "Write the summary as structured markdown.";
+
+    try {
+      const response = await ctx.modelRegistry.complete(
+        model,
+        {
+          messages: [
+            {
+              role: "user" as const,
+              content: [{ type: "text" as const, text: promptText }],
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        { maxTokens: 4096, signal, cacheRetention: "none" },
+      );
+      const summary = response.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text)
+        .join("\n");
+      if (!summary.trim()) return undefined; // default compaction
+      return {
+        compaction: {
+          summary,
+          firstKeptEntryId: preparation.firstKeptEntryId,
+          tokensBefore: preparation.tokensBefore,
+          usage: response.usage,
+        },
+      };
+    } catch {
+      return undefined; // never block compaction — fall back to pi's summarizer
     }
   });
 }

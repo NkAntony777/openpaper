@@ -817,9 +817,18 @@ def run_harness_command(argv):
                          help="Total budget in USD across all paper sessions (default 1.5)")
     p_paper.add_argument("--max-turns", type=int, default=40,
                          help="Max agent turns per session before steering wrap-up (default 40)")
+    p_distill = sub.add_parser(
+        "distill", help="Distill run journal + status ledger into proposed lessons (offline)")
+    p_distill.add_argument("--root", type=Path, required=True,
+                           help="Paper output directory (the agent's working root)")
+
+    p_eval = sub.add_parser(
+        "eval", help="Offline eval-suite metrics for a paper directory (quality, claims, cites)")
+    p_eval.add_argument("--root", type=Path, required=True,
+                        help="Paper output directory (the agent's working root)")
 
     args = parser.parse_args(argv)
-    if args.harness_cmd not in ("section", "review", "paper"):
+    if args.harness_cmd not in ("section", "review", "paper", "distill", "eval"):
         parser.print_help()
         return 2
 
@@ -827,6 +836,42 @@ def run_harness_command(argv):
         print(f"[harness] {msg}", file=sys.stderr, flush=True)
 
     sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    if args.harness_cmd == "distill":
+        try:
+            from harness.journal_distill import distill
+
+            summary = distill(args.root)
+        except Exception as e:
+            _progress(f"error: {type(e).__name__}: {e}")
+            payload = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            print(json.dumps(payload, ensure_ascii=False))
+            return 1
+        _progress(f"distilled {summary['proposed']} lesson(s) -> {summary['lessons_path']}")
+        payload = {"ok": True, "data": {
+            "proposed": summary["proposed"],
+            "lessons_path": summary["lessons_path"],
+        }}
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0
+
+    if args.harness_cmd == "eval":
+        try:
+            from harness.eval_suite import evaluate_root
+
+            metrics = evaluate_root(args.root)
+        except Exception as e:
+            _progress(f"error: {type(e).__name__}: {e}")
+            payload = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            print(json.dumps(payload, ensure_ascii=False))
+            return 1
+        _progress(
+            f"eval: quality={metrics.quality_score} clean={metrics.factcheck_clean} "
+            f"cites={metrics.citation_rate:.2f} passed={metrics.passed}"
+        )
+        payload = {"ok": metrics.passed, "data": metrics.to_dict()}
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0 if metrics.passed else 1
 
     if args.harness_cmd == "paper":
         from harness.paper_task import PaperBudget, run_paper
@@ -904,10 +949,22 @@ def run_harness_command(argv):
             acceptance = verdict.get("data") if verdict.get("ok") else {
                 "passed": False, "error": verdict.get("error"),
             }
+            from harness.acceptance import run_finish_acceptance
+            gate = run_finish_acceptance(driver.root)
+            acceptance = dict(acceptance or {})
+            acceptance["claims_clean"] = gate.claims_clean
+            acceptance["forbidden_hits"] = len(gate.forbidden_hits)
+            acceptance["citation_rate"] = gate.citation_rate
+            acceptance["finish_gaps"] = gate.gaps
+            acceptance["finish_passed"] = gate.passed
             _progress(
                 f"acceptance: passed={acceptance.get('passed')} "
-                f"words={acceptance.get('words')} citations={len(acceptance.get('citations') or [])}"
+                f"words={acceptance.get('words')} citations={len(acceptance.get('citations') or [])} "
+                f"finish={'pass' if gate.passed else 'FAIL'}"
             )
+            if gate.gaps:
+                for g in gate.gaps:
+                    _progress(f"finish gap: {g}")
         except Exception as e:
             _progress(f"acceptance check failed: {type(e).__name__}: {e}")
 
@@ -983,6 +1040,9 @@ def main():
   opendraft tool <name>        Run an agent tool (JSON envelope on stdout)
   opendraft harness section    Drive one paper section via the pi agent loop
   opendraft harness review     Global cross-section review via the pi agent loop
+  opendraft harness paper      Orchestrate sections → review → fixes → finish gate
+  opendraft harness distill    Distill run_journal.jsonl into proposed lessons
+  opendraft harness eval       Offline eval-suite metrics for a paper directory
   opendraft tldr <file>        Generate 5-bullet TL;DR for any paper
   opendraft digest <file>      Generate 60-second audio digest
   opendraft revise <folder> "instructions"   Revise existing draft
@@ -992,6 +1052,9 @@ def main():
   opendraft tool list
   opendraft harness section --root ./paper --section literature_review
   opendraft harness review --root ./paper
+  opendraft harness paper --root ./paper
+  opendraft harness distill --root ./paper
+  opendraft harness eval --root ./paper
   opendraft tldr paper.pdf
   opendraft digest paper.pdf --voice josh
   opendraft revise ./output "make the intro longer"

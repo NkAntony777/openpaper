@@ -400,8 +400,8 @@ save_checkpoint(ctx, "compose", output_root)
 | **M0 工具化**（与底座选型无关，先行） | ① `opendraft tool` 子命令框架 + T1-T7 CLI 包装；② quality_gate 重构（去 ctx 依赖、结构化 issues）；③ 修 compile 补研顺序 bug；④ 补 3 个 Critical ticket 的回归测试 | 每个工具可 CLI 独立调用；`tests/test_tools_*.py` 契约测试过 | 3-5 天 |
 | **M1 PoC** | pi RPC 驱动 + T2/T3/T5 三个工具 + 单节写作闭环（AGENTS.md 自动生成） | 给一个 topic + 已有 research/，agent 自主写出 literature_review 节，score_draft ≥ 70，全程无人工干预，预算熔断生效 | 1-2 天（M0 后） |
 | **M2 写作全 agent 化** | 全部 8 工具接线；compose+validate 被 loop 取代；快照/验收/finish 协议 | 3 个不同 topic 端到端：最终 quality ≥75、FactCheck 无未处理 CONTRADICTED、{cite_MISSING} 为 0；同等质量下 token ≤ 旧流水线 120% | 1-2 周 |
-| **M3 核查-修订闭环强化** | T4→T6 链路、verify 抽查涌现行为、forbidden_claims 接入 finish 验收 | CONTRADICTED claim 100% 被处理（修订或删除有据可查） | 1 周 |
-| **M4 记忆与评估** | run_journal + lessons 蒸馏 + eval suite（N topic 黄金集，分数阈值门禁） | eval suite 进 CI；两次 run 可见 lessons 注入效果 | 1-2 周 |
+| **M3 核查-修订闭环强化** | T4→T6 链路、verify 抽查涌现行为、forbidden_claims 接入 finish 验收 | CONTRADICTED claim 100% 被处理（修订或删除有据可查） | **完成（2026-09-12）** |
+| **M4 记忆与评估** | run_journal + lessons 蒸馏 + eval suite（N topic 黄金集，分数阈值门禁） | eval suite 进 CI；两次 run 可见 lessons 注入效果 | **完成（2026-09-12）** |
 
 **回退策略**：M1 验收若暴露 pi 硬伤（长任务稳定性/Windows/compaction），工具层平移给
 自研 Python loop（B 路线），M0 投入全部保留。
@@ -500,3 +500,56 @@ pi 扩展、Driver、PoC 运行、离线测试：明日继续。
 文献综述密集检索结论矛盾），另 5 条涌现发现（outline 承诺 Contriever 未交付、文献综述引用链格式风险、
 "问题命名但系统不解决"的悬置叙述、引用与主张不匹配、指标命名不一致）。
 scripts/review_demo_setup.py 可复现。非线性把控闭环：review → global_issues.md → 定向 revise。
+
+**M2 收官结果（2026-09-12）**：`harness paper` 端到端 PASS——6/6 节（MiniMax M3 自主写作）、
+review 7 issues、5 个 fix 会话全部修复、full score 100、总成本 $0.51、零 warning。
+run_paper 编排器：plan→逐节(resume 跳过已 passed)→review→parse global_issues 按 scope 定向 fix→
+full 验收→可选 compile；PaperBudget envelope（阶段子预算+总预算，耗尽跳过并警告）。
+两个 driver 修复（均有回归测试）：queue.Empty 超时 tick 曾杀死静默>5s 的会话（抽为
+_queue_line_source）；OPENDRAFT_BIN 确定性解析（当时指向仓库 shim，见下）。
+
+---
+
+## 附录 C1：Windows spawn 定案（2026-09-12，取代附录 C 的"已知回归"）
+
+实测推翻了两个直觉修法：`.cmd` 用 `shell:false` 触发 Node 的 CVE-2024-27980 EINVAL；
+用 `shell:true` 则 Node 把 argv 无引号拼接（DEP0190），cmd.exe 又剥反斜杠、把 JSON
+引号当切换符，三层引用规则（CreateProcess / cmd / C 运行时）互相冲突——**任何经过
+cmd.exe 的路径都无法可靠转发 JSON 参数**。定案：扩展一律无 shell spawn；Windows 下
+`.cmd/.bat` 直接报错并给出指引。驱动解析顺序：`opendraft.exe`（pip 控制台脚本）→
+venv `python.exe` + `OPENDRAFT_BOOTSTRAP`（`-c` 引导片段）→ PATH。真实 pi 会话验证：
+`read_artifact` tool_execution_start/end 均 ok。
+
+---
+
+## 附录 D：M3 / M4 收官（2026-09-12）
+
+**M3 核查–修订闭环**
+
+- T4→T6：`verify_claims` / `manage_claims action=verify` 对 CONTRADICTED 返回 `find_replace`
+  （`wrong_part` → `correct_value`），直接喂给 `revise_section`。
+- 主张账本 `manage_claims`：`record` / `list` / `verify` / `resolve`。`resolve` 证据检查——
+  `deleted` 要求主张原文已不在节内，`revised` 要求 `wrong_part`（或主张原文）已消失。
+- Driver finish 门（`harness/acceptance.py`，T8 语义）：未处理 CONTRADICTED、
+  `research_brief.forbidden_claims` 关键词命中、未知 `cite_XXX`、残留 `{cite_MISSING}`
+  一律拒绝。`run_paper` 与 `harness section` 都跑此门。
+- `write_outline`（结构工具）+ 论文感知 compaction（`session_before_compact` MUST-PRESERVE
+  AGENTS.md / ledger / section_status）仍保留。
+- Windows 定案（见附录 C1）：无 shell spawn；`.cmd/.bat` 显式拒绝；
+  `python.exe + OPENDRAFT_BOOTSTRAP` 或 `opendraft.exe`。
+
+**M4 记忆与评估**
+
+- `opendraft harness distill`：四条离线启发式（短稿拒绝、工具连续失败、指标残留、
+  多轮 fix）写出 `lessons_proposed.md`，人工晋升到 `lessons/approved/` 或仓库
+  `templates/lessons/`。
+- 下次 run：`PiDriver.prepare()` 把 `templates/lessons/*.md` 种子进
+  `<root>/lessons/approved/`（不覆盖已有文件），`paper_map` 注入 AGENTS.md
+  `## Lessons learned`。
+- Eval suite：`tests/eval_gold/{clean_mini,dirty_mini}` + `manifest.json` 五维指标
+  （质量分、FactCheck 清洁率、引用真实率、token 成本、返工轮数）+ finish 门。
+  `opendraft harness eval --root` 可单目录跑；CI `quality.yml` 跑
+  `tests/test_eval_suite.py::test_eval_gold_set_gates`。
+- 两次 run 注入：distill → 人工晋升 templates → 第二次 `seed_approved_lessons` +
+  `write_paper_map` 可见 lesson（离线测试 `test_two_run_lessons_inject_into_second_paper_map`）。
+

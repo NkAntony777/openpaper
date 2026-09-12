@@ -89,7 +89,7 @@ python scripts/run_poc.py
 
 A ready-made research fixture for trying things out: `scripts/make_poc_fixture.py` builds one (bibliography + paper notes + outline + checkpoint) under `tests/fixtures/poc_output/`.
 
-**Current scope, honestly**: the retired pipeline took a topic through research+structure before writing. Today you bring (or build) the research directory yourself; `search_literature` already works during writing, and autonomous topic→paper runs are on the roadmap (M2/M3).
+**Current scope, honestly**: research/structure are still a prepared directory (bring your own, or `scripts/make_poc_fixture.py`). Writing, review, claim-audit, and lesson distillation run as an agent harness (`opendraft harness paper` / `distill` / `eval`). Fully autonomous topic→paper research remains future work.
 
 ## Configuration
 
@@ -111,9 +111,9 @@ Every layer is testable without pi or a model: the driver's event loop takes inj
 
 ## Roadmap
 
-- **M2 (now)**: state ledgers for non-linear control — `section_status.json` (per-section score/issue history), per-section summary ledger, `harness review` global coherence session emitting a persisted `global_issues.md`; then multi-section orchestration (`harness paper`)
-- **M3**: claims ledger, cross-section fact-check, research/structure phases re-entered as tools; paper-aware pi compaction
-- **M4**: run-journal distillation (`lessons.md`) — cross-run memory with human review
+- **M2 (done)**: state ledgers for non-linear control — `section_status.json`, per-section summary ledger, `harness review` → `global_issues.md`, then `harness paper` orchestration
+- **M3 (done)**: claims ledger (`manage_claims` record/verify/resolve), T4→T6 `find_replace` chain, `forbidden_claims` + CONTRADICTED finish gate, `write_outline`, paper-aware pi compaction
+- **M4 (done)**: `opendraft harness distill` → `lessons_proposed.md` (human review) → `lessons/approved/` + `templates/lessons/` injected into `AGENTS.md`; offline eval suite (`tests/eval_gold/`, `opendraft harness eval`) in CI
 
 See [docs/AGENT_HARNESS_DESIGN.md](docs/AGENT_HARNESS_DESIGN.md) for the full design (incl. the quality-gate audit that motivated the refactor).
 

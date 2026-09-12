@@ -55,3 +55,7 @@ jobs:
       - name: Run Test Suite
         run: |
           python -m pytest tests -q
+
+      - name: Harness eval suite (gold fixtures)
+        run: |
+          python -m pytest tests/test_eval_suite.py::test_eval_gold_set_gates -q
