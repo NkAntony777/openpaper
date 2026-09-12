@@ -95,10 +95,10 @@ opendraft-digest = "digest:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["opendraft*", "utils*", "concurrency*", "phases*", "agent_tools*"]
+include = ["opendraft*", "utils*", "concurrency*", "phases*", "agent_tools*", "harness*"]
 
 [tool.setuptools]
-py-modules = ["config", "draft_generator", "tldr", "digest"]
+py-modules = ["config", "tldr", "digest"]
 include-package-data = true
 
 [tool.setuptools.package-data]

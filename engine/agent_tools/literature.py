@@ -27,9 +27,48 @@ from utils.citation_database import (
     load_citation_database,
     save_citation_database,
 )
-from phases.citations import _build_citation_summary
 
 CITATION_SUMMARY_REL = "drafts/citation_summary.md"
+
+
+def _build_citation_summary(citation_database) -> str:
+    """Build comprehensive citation database string for writing agent prompts."""
+    citation_summary = f"\n\n{'='*80}\n## CITATION DATABASE - {len(citation_database.citations)} CITATIONS AVAILABLE\n{'='*80}\n\n"
+    citation_summary += "\u26a0\ufe0f  **CRITICAL CITATION RESTRICTION** \u26a0\ufe0f\n\n"
+    citation_summary += "You MUST ONLY cite papers from this database. DO NOT:\n"
+    citation_summary += "- Cite papers from your training data\n"
+    citation_summary += "- Invent or hallucinate citations\n"
+    citation_summary += "- Reference papers not listed below\n"
+    citation_summary += "- Use author names not in this database\n\n"
+    citation_summary += "Citation format: Use {{cite_XXX}} where XXX is the citation ID shown below.\n"
+    citation_summary += f"\n{'='*80}\n\n"
+
+    for i, citation in enumerate(citation_database.citations, 1):
+        authors_str = ", ".join(citation.authors[:3])
+        if len(citation.authors) > 3:
+            authors_str += " et al."
+
+        citation_summary += f"{i}. **[{citation.id}]** {authors_str} ({citation.year})\n"
+        citation_summary += f"   Title: {citation.title}\n"
+
+        if citation.doi:
+            citation_summary += f"   DOI: {citation.doi}\n"
+        if citation.journal:
+            citation_summary += f"   Journal: {citation.journal}\n"
+        if citation.abstract:
+            abstract_preview = citation.abstract[:300]
+            if len(citation.abstract) > 300:
+                abstract_preview += "..."
+            citation_summary += f"   Abstract: {abstract_preview}\n"
+
+        citation_summary += f"   Citation format: {{{{{citation.id}}}}}\n\n"
+
+    citation_summary += f"\n{'='*80}\n"
+    citation_summary += f"Total citations available: {len(citation_database.citations)}\n"
+    citation_summary += "Remember: ONLY cite from this list. No external citations allowed.\n"
+    citation_summary += f"{'='*80}\n"
+
+    return citation_summary
 
 
 @contextlib.contextmanager

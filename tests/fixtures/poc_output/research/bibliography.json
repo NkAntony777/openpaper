@@ -1,0 +1,186 @@
+{
+  "citations": [
+    {
+      "id": "cite_001",
+      "authors": [
+        "Lewis",
+        "Perez",
+        "Piktus"
+      ],
+      "year": 2020,
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "journal": "Advances in Neural Information Processing Systems (NeurIPS)",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/2005.11401",
+      "abstract": "Introduces RAG: combining a parametric seq2seq generator with a non-parametric dense passage retriever, showing large gains on knowledge-intensive tasks like open-domain QA."
+    },
+    {
+      "id": "cite_002",
+      "authors": [
+        "Karpukhin",
+        "Ogunrinde",
+        "Min"
+      ],
+      "year": 2020,
+      "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+      "journal": "Proceedings of EMNLP",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/2004.04906",
+      "abstract": "Shows that dense encoders trained with dual objectives outperform BM25 for open-domain QA passage retrieval, becoming the standard retriever for RAG pipelines."
+    },
+    {
+      "id": "cite_003",
+      "authors": [
+        "Guu",
+        "Lee",
+        "Tung"
+      ],
+      "year": 2020,
+      "title": "REALM: Retrieval-Augmented Language Model Pre-Training",
+      "journal": "Proceedings of ICML",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/2002.08909",
+      "abstract": "Pre-trains a language model with a latent knowledge retriever end-to-end, demonstrating that retrieval can be integrated into pretraining rather than added at inference time."
+    },
+    {
+      "id": "cite_004",
+      "authors": [
+        "Izacard",
+        "Grave"
+      ],
+      "year": 2021,
+      "title": "Leveraging Passage Retrieval with Generative Models for Open Domain Question Answering",
+      "journal": "Proceedings of EACL",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/2007.01282",
+      "abstract": "Fusion-in-Decoder: scores many retrieved passages jointly in the decoder, achieving state-of-the-art open-domain QA with a reader much smaller than generator-only models."
+    },
+    {
+      "id": "cite_005",
+      "authors": [
+        "Izacard",
+        "Lewis",
+        "Lomeli"
+      ],
+      "year": 2022,
+      "title": "Atlas: Few-shot Learning with Retrieval Augmented Language Models",
+      "journal": "Journal of Machine Learning Research",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/2208.03299",
+      "abstract": "A large retrieval-augmented model that excels at few-shot knowledge-intensive tasks, indexing billions of documents and probing the effect of model scale and index size."
+    },
+    {
+      "id": "cite_006",
+      "authors": [
+        "Asai",
+        "Wu",
+        "Wang"
+      ],
+      "year": 2023,
+      "title": "Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection",
+      "journal": "Proceedings of ICLR",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/2310.11511",
+      "abstract": "Trains a single model to adaptively decide when to retrieve and to critique its own generations with reflection tokens, improving factuality and citation precision."
+    },
+    {
+      "id": "cite_007",
+      "authors": [
+        "Yan",
+        "Xiong",
+        "Song"
+      ],
+      "year": 2024,
+      "title": "Corrective Retrieval Augmented Generation",
+      "journal": "Proceedings of ACL",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/2401.15884",
+      "abstract": "CRAG adds a lightweight retrieval evaluator that judges retrieved documents and triggers corrective actions (decompose, filter, web search) when retrieval quality is poor."
+    },
+    {
+      "id": "cite_008",
+      "authors": [
+        "Reimers",
+        "Gurevych"
+      ],
+      "year": 2019,
+      "title": "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks",
+      "journal": "Proceedings of EMNLP",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/1908.10084",
+      "abstract": "Siamese network fine-tuning of BERT produces semantically meaningful sentence embeddings, the backbone of many dense retrieval encoders used in RAG."
+    },
+    {
+      "id": "cite_009",
+      "authors": [
+        "Robertson",
+        "Zaragoza"
+      ],
+      "year": 2009,
+      "title": "The Probabilistic Relevance Framework: BM25 and Beyond",
+      "journal": "Foundations and Trends in Information Retrieval",
+      "source_type": "journal",
+      "language": "english",
+      "abstract": "The canonical reference for BM25, the sparse lexical baseline against which all dense retrievers in RAG systems are compared."
+    },
+    {
+      "id": "cite_010",
+      "authors": [
+        "Izacard",
+        "Caron",
+        "Hosseini"
+      ],
+      "year": 2021,
+      "title": "Unsupervised Dense Information Retrieval with Contrastive Learning",
+      "journal": "Transactions on Machine Learning Research",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/2112.09118",
+      "abstract": "Contriever: contrastive unsupervised pretraining yields dense retrievers competitive with BM25 without any labeled pairs, relevant when domain QA lacks training data."
+    },
+    {
+      "id": "cite_011",
+      "authors": [
+        "Shao",
+        "Gong",
+        "Shen"
+      ],
+      "year": 2023,
+      "title": "Enhancing Retrieval-Augmented Large Language Models with Iterative Retrieval-Generation Synergy",
+      "journal": "Proceedings of EMNLP",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/2305.15294",
+      "abstract": "ITER-RETGEN interleaves retrieval and generation so that model drafts inform subsequent retrieval, improving multi-hop and domain-specific QA over single-shot RAG."
+    },
+    {
+      "id": "cite_012",
+      "authors": [
+        "Gao",
+        "Xiong",
+        "Gao"
+      ],
+      "year": 2023,
+      "title": "Retrieval-Augmented Generation for Large Language Models: A Survey",
+      "journal": "arXiv preprint arXiv:2312.10997",
+      "source_type": "journal",
+      "language": "english",
+      "url": "https://arxiv.org/abs/2312.10997",
+      "abstract": "Comprehensive survey organizing RAG by naive/advanced/modular paradigms and identifying tuning, evaluation, and domain adaptation as open challenges."
+    }
+  ],
+  "metadata": {
+    "total_citations": 12,
+    "citation_style": "APA 7th",
+    "draft_language": "english",
+    "extracted_date": "2026-02-20T00:00:00"
+  }
+}
