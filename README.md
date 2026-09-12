@@ -2,6 +2,7 @@
 
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Quality Gates](https://github.com/NkAntony777/openpaper/actions/workflows/quality.yml/badge.svg)](https://github.com/NkAntony777/openpaper/actions/workflows/quality.yml)
 [![Built on OpenDraft](https://img.shields.io/badge/Built%20on-OpenDraft-orange)](https://github.com/federicodeponte/opendraft)
 
 > An agent-native academic writing harness, built on [OpenDraft](https://github.com/federicodeponte/opendraft) and rebuilt around one idea: **the model is the orchestrator, tools are the capabilities, disk is the truth.**
@@ -69,7 +70,9 @@ Everything OpenDraft built that matters is kept and reused: the citation API cas
 | `write_section` | Idempotent full-section write + checkpoint sync | citation whitelist, word floor, placeholder rejection, snapshots |
 | `score_draft` | 100-point gate, **structured issues** as the fix backlog | read-only, idempotent |
 | `verify_claims` | Web-grounded fact-check → `wrong_part`/`correct_value` pairs | — |
-| `revise_section` | Targeted revision (exact `find_replace` or LLM pass) | same guardrails as `write_section` |
+| `manage_claims` | Persistent claims ledger: record / list / verify / resolve | resolve is evidence-checked against the draft on disk |
+| `revise_section` | Targeted revision (exact `find_replace` or LLM pass) | same guardrails as `write_section`; invalidates the section's passed bit |
+| `write_outline` | Non-linear structure control: rewrite/merge the outline mid-writing | merge=true does heading-keyed replacement; syncs checkpoint |
 | `compile_draft` | Deterministic compile + PDF/DOCX export | auto-backfills `{cite_MISSING}` **into the reference list** |
 
 ## Quickstart
@@ -84,8 +87,12 @@ opendraft tool score_draft --root <output dir> --args '{"scope":"full"}'
 # 2. Let the agent write one section end-to-end (given a research/ dir)
 opendraft harness section --root <output dir> --section literature_review
 
-# 3. Run the acceptance PoC (fixtures a research dir, agent writes the section)
-python scripts/run_poc.py
+# 3. Run the whole paper: sections → global review → targeted fixes → finish gate
+opendraft harness paper --root <output dir>          # add --compile for PDF/DOCX
+
+# 4. After a run: distill lessons from the journal, or score a directory offline
+opendraft harness distill --root <output dir>
+opendraft harness eval --root <output dir>
 ```
 
 A ready-made research fixture for trying things out: `scripts/make_poc_fixture.py` builds one (bibliography + paper notes + outline + checkpoint) under `tests/fixtures/poc_output/`.
@@ -105,16 +112,19 @@ A ready-made research fixture for trying things out: `scripts/make_poc_fixture.p
 ## Testing
 
 ```bash
-pytest tests/ -q        # 500+ offline tests; no network, no LLM calls
+pytest tests/ -q        # 580+ offline tests; no network, no LLM calls
 ```
 
-Every layer is testable without pi or a model: the driver's event loop takes injected `next_line`/`send`/`clock`, so budget escalation, UI-dialog handling, and journal behavior run against canned JSONL.
+Every layer is testable without pi or a model: the driver's event loop takes injected `next_line`/`send`/`clock`, so budget escalation, UI-dialog handling, and journal behavior run against canned JSONL. The pi extension (`opendraft-tools.ts`) has its own offline smoke test (`tests/ts_extension_smoke.mjs`, 24 assertions: tool registration, spawn argv, envelope error model, `.cmd` rejection, compaction fallback) wired into pytest. CI additionally runs the gold-fixture eval gates on every push.
 
 ## Roadmap
 
 - **M2 (done)**: state ledgers for non-linear control — `section_status.json`, per-section summary ledger, `harness review` → `global_issues.md`, then `harness paper` orchestration
 - **M3 (done)**: claims ledger (`manage_claims` record/verify/resolve), T4→T6 `find_replace` chain, `forbidden_claims` + CONTRADICTED finish gate, `write_outline`, paper-aware pi compaction
 - **M4 (done)**: `opendraft harness distill` → `lessons_proposed.md` (human review) → `lessons/approved/` + `templates/lessons/` injected into `AGENTS.md`; offline eval suite (`tests/eval_gold/`, `opendraft harness eval`) in CI
+- **M5 (done)**: third-party audit remediation — finish gate now checks section presence + word floors + a `--min-score` quality floor (negation-aware forbidden scan), fix sessions are re-scored on disk truth before being accepted, review failures fail the run, and cost telemetry is real (`spent=` per session)
+
+**Known boundaries** (next candidates): pi's built-in file-write tools can still bypass tool guardrails (allowlist trade-off), review issue routing keys on section names in the fix text, and lesson injection is not yet topic-scoped.
 
 See [docs/AGENT_HARNESS_DESIGN.md](docs/AGENT_HARNESS_DESIGN.md) for the full design (incl. the quality-gate audit that motivated the refactor).
 
