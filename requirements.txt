@@ -13,7 +13,7 @@ citeproc-py>=0.6.0,<0.7.0   # Citation formatting (APA, MLA, Chicago, IEEE)
 PyYAML>=6.0.0,<7.0.0        # YAML frontmatter parsing
 
 # === Document Export ===
-markdown>=3.5.0,<4.0.0      # Markdown parsing
+markdown>=3.10.3,<4.0.0      # Markdown parsing
 weasyprint>=60.0,<70.0      # PDF generation (no LaTeX needed!)
 python-docx>=1.0.0,<2.0.0   # Word document generation
 
