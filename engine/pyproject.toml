@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "opendraft"
-version = "1.7.2"
-description = "Generate master-level research papers with real citations in minutes"
+name = "openpaper"
+version = "2.0.0"
+description = "Agent-native academic paper writing harness built on OpenDraft"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [

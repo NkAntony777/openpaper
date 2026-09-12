@@ -1,450 +1,122 @@
-# OpenDraft - Open Source AI Research Draft Generator
+# OpenPaper
 
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Open Source](https://img.shields.io/badge/Open%20Source-100%25-brightgreen.svg)](https://github.com/federicodeponte/opendraft)
-[![GitHub stars](https://img.shields.io/github/stars/federicodeponte/opendraft?style=social)](https://github.com/federicodeponte/opendraft)
+[![Built on OpenDraft](https://img.shields.io/badge/Built%20on-OpenDraft-orange)](https://github.com/federicodeponte/opendraft)
 
-> Generate research drafts with citations verified against 250M+ academic papers. OpenDraft is a free, open-source Python engine for thesis-level research drafts.
+> An agent-native academic writing harness, built on [OpenDraft](https://github.com/federicodeponte/opendraft) and rebuilt around one idea: **the model is the orchestrator, tools are the capabilities, disk is the truth.**
 
-<p align="center">
-  <a href="https://opendraft.xyz/waitlist"><strong>Try Hosted Version (Coming Soon) →</strong></a>
-</p>
+OpenPaper turns paper writing into a tool-use loop: an agent (driven by [pi](https://github.com/earendil-works/pi) in RPC mode) reads research material, searches literature, writes sections, scores its own draft against structured quality gates, and revises — with guardrails that make hallucinated citations structurally impossible and a budget breaker that keeps runs bounded.
 
 ---
 
-## What is OpenDraft?
+## What changed vs OpenDraft
 
-**OpenDraft is a Python-based AI engine that generates thesis-level research drafts.** Unlike ChatGPT, it uses 19 specialized AI agents working together and verifies every citation against real academic databases.
+OpenDraft runs a **fixed 19-agent pipeline** (research → structure → compose → QA → export). Its quality gates *report* problems into markdown files for humans; they never *act* on them — the backend "writes the draft and ships it". OpenPaper replaces the orchestration with an agent loop over a small set of solid tools, and closes the quality feedback loop:
 
-- **Best for:** Researchers drafting literature reviews, research papers, and academic documents
-- **Price:** 100% free and open source (MIT license)
-- **Setup time:** 10 minutes
+| Area | OpenDraft | OpenPaper |
+|---|---|---|
+| Orchestration | Fixed phase pipeline, 19 agents, 7 phases | Agent loop + tools; the model decides the next step (evaluator-optimizer) |
+| Quality feedback | Score/warning only — no rewrite path | Structured issues `{section, metric, actual, target, severity}` fed back to the model, which revises and re-scores until clean |
+| Citation safety | LLM fallback disabled, but no write-time check | **Whitelist guardrail**: `write_section` rejects any `cite_XXX` not in `research/bibliography.json` — hallucinated citations can't reach disk |
+| Tool surface | None for agents (phases only callable as coarse API stubs) | 7 composable tools behind a machine-readable `opendraft tool` CLI contract |
+| Long-run safety | Checkpoint/resume per phase | + budget breaker (cost/turns/wall-clock → steer → abort → process-tree kill), append-only run journal |
+| Writing context | ~3k-char prompt stuffing per section | `AGENTS.md` paper map + on-demand artifact reads (context is a cache; disk is the truth) |
+| Headless operation | Interactive CLI + UIs | Unattended RPC driver: extension isolation, UI dialogs auto-cancelled, no shell by default |
+| Codebase | 2.5k-line orchestrator god object + 19 prompts + 2 UIs + 36 utils | Tool layer + harness ≈ 2.7k lines total; ~96 pipeline files retired |
 
----
+Bug fixes and refactors on top of OpenDraft's foundation:
 
-## Why OpenDraft Exists
+- **Reference-list ordering bug**: `generate_reference_list` ran before `compile_citations`, so auto-researched `{cite_MISSING}` citations never reached the bibliography (new `CitationCompiler.generate_reference_list_for_ids`, regression-tested)
+- **Quality gate refactor**: `score_draft_quality(ctx)` split into a pure `score_texts()` core emitting structured diagnostics; the old ctx-based API delegates unchanged
+- Version aligned (CLI reported a stale version), packaging fixed (`harness*` included)
 
-We built OpenDraft after repeatedly encountering AI writing tools that produced confident-sounding research drafts with hallucinated or unverifiable citations.
-
-Academic research requires trust, sources, and accountability.
-
-OpenDraft explores a different approach: instead of a single general-purpose model, it uses multiple specialized agents, each responsible for a specific step in the research drafting process, grounded in real academic literature.
-
-We open-sourced OpenDraft so researchers can inspect, critique, and improve how these systems actually work.
-
----
-
-## What OpenDraft is NOT
-
-OpenDraft is intentionally **not** designed for:
-
-- One-click generation of final papers
-- Cheating on assignments
-- Inventing citations or bypassing peer review
-- Replacing human researchers
-
-It is a research assistance and drafting tool, not an autonomous author.
+Everything OpenDraft built that matters is kept and reused: the citation API cascade (Semantic Scholar / Crossref / OpenAlex / Serper / Gemini-grounded), the citation database + compiler, the web-grounded fact-check verifier, the revise channel with circuit breaker, and the Pandoc export chain.
 
 ---
 
-## OpenDraft vs ChatGPT
-
-| Question | ChatGPT | OpenDraft |
-|----------|---------|-----------|
-| Does it hallucinate citations? | Yes (often) | **Verified against real databases** |
-| Can it write 20,000+ words? | No (hits limits) | **Yes** |
-| Does it search real papers? | No | **Yes (250M+ papers)** |
-| Thesis structure? | Generic | **Academic chapters & sections** |
-| Export to PDF/Word? | No | **Yes** |
-| Free? | Limited | **100% free (self-host)** |
-| Open source? | No | **Yes (MIT license)** |
-
-**Bottom line:** If you need an AI for academic writing with real citations, OpenDraft is a free, open-source alternative to ChatGPT.
-
----
-
-## How It Works
-
-OpenDraft uses **19 specialized AI agents** that work like a research team:
+## Architecture
 
 ```
-📚 RESEARCH PHASE    → Finds relevant papers from 250M+ sources
-🏗️ STRUCTURE PHASE   → Creates thesis outline with chapters
-✍️ WRITING PHASE     → Drafts each section with academic tone
-🔍 CITATION PHASE    → Verifies every source exists (CrossRef, arXiv)
-✨ POLISH PHASE      → Refines language and formatting
-📄 EXPORT PHASE      → Generates PDF, Word, or LaTeX
+┌ Driver (engine/harness/driver.py) ──────────────────────────────┐
+│ Python · spawns pi in RPC mode · budget breaker (cost/turns/time)│
+│ steer → abort → taskkill-tree · run_journal.jsonl · acceptance   │
+└──────────────┬───────────────────────────────────────────────────┘
+               │ stdin/stdout JSONL
+┌ pi agent (底座) ─────────────────────────────────────────────────┐
+│ agent loop · message history · auto-compaction · tool execution  │
+│ + opendraft-tools.ts extension (7 tools, TypeBox, guidelines)    │
+└──────────────┬───────────────────────────────────────────────────┘
+               │ `opendraft tool <name> --root DIR --args '<json>'`
+┌ Tool layer (engine/agent_tools/) ────────────────────────────────┐
+│ read_artifact · write_section · score_draft · search_literature  │
+│ verify_claims · revise_section · compile_draft                   │
+│ envelope: {"ok", "data|error", "is_retryable"} — errors are      │
+│ tool results, never crashes                                      │
+└──────────────┬───────────────────────────────────────────────────┘
+               ▼
+        <output root>/  ← 唯一事实源: research/ · drafts/ ·
+        research/bibliography.json · checkpoint.json · AGENTS.md
 ```
 
-**Result:** A complete research draft in 10-20 minutes instead of weeks.
+## The tools
 
----
+| Tool | What it does | Guardrails |
+|---|---|---|
+| `read_artifact` | Read research notes, outline, bibliography, drafts | path-confined to the output root, paged reads |
+| `search_literature` | Search academic databases; results become citable immediately | LLM-fabricated citations stay disabled |
+| `write_section` | Idempotent full-section write + checkpoint sync | citation whitelist, word floor, placeholder rejection, snapshots |
+| `score_draft` | 100-point gate, **structured issues** as the fix backlog | read-only, idempotent |
+| `verify_claims` | Web-grounded fact-check → `wrong_part`/`correct_value` pairs | — |
+| `revise_section` | Targeted revision (exact `find_replace` or LLM pass) | same guardrails as `write_section` |
+| `compile_draft` | Deterministic compile + PDF/DOCX export | auto-backfills `{cite_MISSING}` **into the reference list** |
 
-## Features
+## Quickstart
 
-### AI That Doesn't Make Up Citations
-Every citation is verified against CrossRef, OpenAlex, Semantic Scholar, and arXiv. If a paper doesn't exist, it's not included.
-
-### Write Any Type of Academic Paper
-- Research papers (5-10 pages)
-- Bachelor's thesis (30-50 pages)
-- Master's thesis (50-80 pages)
-- PhD dissertation (100+ pages)
-
-### 57+ Languages Supported
-English, Spanish, German, French, Chinese, Japanese, Korean, Arabic, Portuguese, Italian, Dutch, Polish, Russian, and 40+ more.
-
-### Export to Any Format
-- **PDF** - LaTeX-quality formatting
-- **Microsoft Word** (.docx)
-- **LaTeX source** - for journals
-
-### 100% Free and Open Source
-MIT license. Self-host with your own API keys. No subscriptions, no paywalls, no limits.
-
----
-
-## TL;DR and Digest Tools
-
-OpenDraft includes two standalone tools for quickly understanding any research paper:
-
-### TL;DR: 5-Bullet Summary
-
-Generate a concise 5-bullet summary of any paper in seconds:
+Requirements: Python 3.10+, a pi install (`npm i -g @earendil-works/pi-coding-agent` or the standalone), and a MiniMax key (`MINIMAX_API_KEY`) — the reference setup uses `MiniMax-M3` via pi's `minimax-cn` provider; other pi-supported providers work via `--model`/`PI_MODEL`.
 
 ```bash
-# As a subcommand
-opendraft tldr paper.pdf
+# 1. Try the tool surface (single-line JSON envelope on stdout)
+opendraft tool list
+opendraft tool score_draft --root <output dir> --args '{"scope":"full"}'
 
-# Or standalone
-opendraft-tldr paper.pdf
+# 2. Let the agent write one section end-to-end (given a research/ dir)
+opendraft harness section --root <output dir> --section literature_review
 
-# Output to file
-opendraft tldr paper.pdf -o summary.md
+# 3. Run the acceptance PoC (fixtures a research dir, agent writes the section)
+python scripts/run_poc.py
 ```
 
-Each bullet follows academic structure: thesis, key finding, method, implication, limitation.
+A ready-made research fixture for trying things out: `scripts/make_poc_fixture.py` builds one (bibliography + paper notes + outline + checkpoint) under `tests/fixtures/poc_output/`.
 
-### Digest: 60-Second Audio Briefing
+**Current scope, honestly**: the retired pipeline took a topic through research+structure before writing. Today you bring (or build) the research directory yourself; `search_literature` already works during writing, and autonomous topic→paper runs are on the roadmap (M2/M3).
 
-Generate a podcast-style audio summary you can listen to:
+## Configuration
+
+| Env | Meaning |
+|---|---|
+| `PI_MODEL` / `--model` | pi model pattern (default `minimax-cn/MiniMax-M3`) |
+| `PI_BIN` | pi executable (default `E:\npm-global\pi.cmd`; override anywhere else) |
+| `OPENAI_API_KEY` + `OPENAI_BASE_URL` | OpenAI-compatible backend for OpenDraft's own LLM calls (revise, abstract, verifier) |
+| `MINIMAX_API_KEY` / `MINIMAX_CN_API_KEY` | pi's native MiniMax provider keys (the driver auto-maps `OPENAI_API_KEY`) |
+| `GOOGLE_API_KEY` | needed only for `verify_claims` (Gemini-grounded search) |
+
+## Testing
 
 ```bash
-# Generate script + audio
-opendraft digest paper.pdf
-
-# Choose a different voice (rachel, adam, josh, elli, bella)
-opendraft digest paper.pdf --voice adam
-
-# Script only (no audio)
-opendraft digest paper.pdf --no-audio
-
-# Specify output directory
-opendraft digest paper.pdf -o output/
+pytest tests/ -q        # 500+ offline tests; no network, no LLM calls
 ```
 
-**Requirements:**
-- Digest audio requires an [ElevenLabs API key](https://elevenlabs.io/) set as `ELEVENLABS_API_KEY`
-- PDF reading requires the optional `pdf` extra: `pip install opendraft[pdf]`
+Every layer is testable without pi or a model: the driver's event loop takes injected `next_line`/`send`/`clock`, so budget escalation, UI-dialog handling, and journal behavior run against canned JSONL.
 
-Both tools work with any academic paper (PDF, Markdown, or plain text), not just OpenDraft-generated documents.
+## Roadmap
 
----
+- **M2 (now)**: state ledgers for non-linear control — `section_status.json` (per-section score/issue history), per-section summary ledger, `harness review` global coherence session emitting a persisted `global_issues.md`; then multi-section orchestration (`harness paper`)
+- **M3**: claims ledger, cross-section fact-check, research/structure phases re-entered as tools; paper-aware pi compaction
+- **M4**: run-journal distillation (`lessons.md`) — cross-run memory with human review
 
-## Data Fetching
+See [docs/AGENT_HARNESS_DESIGN.md](docs/AGENT_HARNESS_DESIGN.md) for the full design (incl. the quality-gate audit that motivated the refactor).
 
-Fetch research data from major statistical APIs directly into your workflow:
+## Credits & license
 
-```bash
-# Search for indicators
-opendraft data search GDP
-
-# Fetch World Bank data
-opendraft data worldbank NY.GDP.MKTP.CD --countries USA;DEU --start 2020 --end 2023
-
-# Fetch EU statistics (Eurostat)
-opendraft data eurostat nama_10_gdp
-
-# Fetch Our World in Data datasets
-opendraft data owid covid-19
-```
-
-**Supported providers:**
-- **World Bank** - Development indicators (GDP, population, education, health)
-- **Eurostat** - European Union statistics
-- **Our World in Data** - Open research datasets
-
-Data is saved as CSV files for use in your research.
-
----
-
-## Draft Revision
-
-Revise existing drafts with AI assistance:
-
-```bash
-# Revise a draft with natural language instructions
-opendraft revise ./output "Make the introduction longer and add more context"
-
-# The revised draft is saved as draft_v2.md (with PDF/DOCX exports)
-```
-
-Features:
-- Auto-detects draft files in output folders
-- Preserves all citations during revision
-- Automatic versioning (v2, v3, v4...)
-- Quality scoring before/after
-- PDF and DOCX export of revised version
-
----
-
-## Research Expose Mode
-
-Generate a quick research overview instead of a full draft:
-
-```bash
-opendraft "Neural Networks in Healthcare" --expose
-```
-
-This produces a research expose with:
-- **Research Sources Overview** - Number of sources, publication years, key journals
-- **Key Research Teams** - Major authors and research groups in the field
-- **Structured Outline** - Chapter/section structure for a full paper
-- **Complete Bibliography** - All sources with DOIs and journal info
-- **Next Steps** - Guidance for developing into a full draft
-
-Use expose mode when you want to:
-- Quickly scope a research topic
-- Validate there's enough literature
-- Get a structured starting point
-- Review sources before committing to a full draft
-
-Expose mode is ~3x faster than full draft generation.
-
----
-
-## TL;DR Mode
-
-Generate a 5-bullet summary of any academic paper in seconds:
-
-```bash
-# Summarize a PDF
-opendraft tldr paper.pdf
-
-# Summarize a markdown file
-opendraft tldr draft.md
-
-# Save to file
-opendraft tldr paper.pdf --output summary.md
-```
-
-Output:
-```
-📄 TL;DR: paper.pdf
-
-• Main finding: Neural networks improve diagnostic accuracy by 23%
-• Method: Retrospective analysis of 50,000 patient records
-• Key limitation: Single-center study, needs external validation
-• Implication: AI-assisted diagnosis could reduce misdiagnosis rates
-• Future work: Multi-center trials planned for 2025
-```
-
-Works with any PDF, Markdown, or text file.
-
----
-
-## Audio Digest
-
-Generate a 60-second audio summary using ElevenLabs TTS:
-
-```bash
-# Generate audio digest (requires ElevenLabs API key)
-opendraft digest paper.pdf
-
-# Choose a voice
-opendraft digest paper.pdf --voice adam
-
-# Available voices: rachel (default), adam, josh, elli, bella
-```
-
-Output: `paper_digest.mp3` - a professional narration summarizing the key points.
-
-**Setup:** Set `ELEVENLABS_API_KEY` in your environment or `.env` file.
-
----
-
-## Quick Start
-
-### Prerequisites
-- Python 3.10+
-- A free [Gemini API key](https://makersuite.google.com/app/apikey)
-
-### 1. Clone & Install
-
-```bash
-git clone https://github.com/federicodeponte/opendraft.git
-cd opendraft
-pip install -r requirements.txt
-```
-
-### 2. Configure
-
-Create a `.env` file with your API key:
-```bash
-GOOGLE_API_KEY=your-gemini-api-key
-```
-
-### 3. Generate a Draft
-
-```python
-from engine.draft_generator import DraftGenerator
-
-generator = DraftGenerator()
-draft = generator.generate(
-    topic="The Impact of AI on Academic Research",
-    paper_type="master",  # research_paper, bachelor, master, phd
-    language="en"
-)
-
-# Export to different formats
-draft.to_pdf("thesis.pdf")
-draft.to_docx("thesis.docx")
-draft.to_latex("thesis.tex")
-```
-
-See `engine/README.md` for detailed API documentation.
-
----
-
-## Which AI Model Should I Use?
-
-| Model | Speed | Quality | Cost/Draft | Best For |
-|-------|-------|---------|------------|----------|
-| **Gemini 3 Flash** | ⚡ Fast | Good | ~$0.35 | Most users |
-| Gemini 3 Pro | Medium | Excellent | ~$1.40 | Important papers |
-| GPT-5.2 | Medium | Excellent | ~$1.60 | OpenAI users |
-| Claude Sonnet 4.5 | Medium | Excellent | ~$1.80 | Nuanced writing |
-| Claude Opus 4.5 | Slow | Best | ~$3.00 | Maximum quality |
-
-**Recommendation:** Start with Gemini 3 Flash for most use cases. Use Gemini 3 Pro or Claude Sonnet 4.5 for important papers.
-
----
-
-## Example Output
-
-See what OpenDraft produces:
-
-📄 **[Download Sample PDF](https://opendraft.xyz/examples/Why_Academic_Thesis_AI_Saves_The_World.pdf)** (60 pages, 18k words, 40+ citations)
-
-📝 **[Download Sample Word](https://opendraft.xyz/examples/Why_Academic_Thesis_AI_Saves_The_World.docx)**
-
-Generated in ~15 minutes with verified citations from real academic papers.
-
----
-
-## Project Structure
-
-```
-opendraft/
-├── engine/
-│   ├── draft_generator.py    # Main 19-agent pipeline
-│   ├── config.py             # Model & API settings
-│   ├── prompts/              # Agent instruction templates
-│   ├── utils/                # Citations, export, helpers
-│   └── opendraft/            # Core agent modules
-├── examples/                 # Sample thesis outputs
-├── requirements.txt          # Python dependencies
-└── README.md
-```
-
----
-
-## FAQ
-
-### Is this really free?
-
-**Yes.** OpenDraft is 100% open source under the MIT license. Self-host with your own API keys. A typical thesis draft costs ~$0.35-$3 depending on the model.
-
-### Is this better than ChatGPT for academic writing?
-
-**For research drafts, yes.** ChatGPT often hallucinates citations. OpenDraft verifies every citation against CrossRef, OpenAlex, Semantic Scholar, and arXiv.
-
-### Can I use this for my university thesis?
-
-OpenDraft generates **research drafts**—starting points you should review, edit, and build upon. Always:
-- Verify all sources yourself
-- Add your own analysis and insights
-- Check your institution's AI policy
-
-### How is this different from other AI writing tools?
-
-Most AI tools use a single model. OpenDraft uses **19 specialized agents**—one for research, one for citations, one for structure, etc. This produces higher quality output.
-
-### Can I use this commercially?
-
-**Yes.** MIT license allows commercial use. Build products, offer services, modify the code—no restrictions.
-
----
-
-## Alternatives Comparison (2025)
-
-| Tool | Price | Open Source | Verified Citations | Long Documents |
-|------|-------|-------------|-------------------|----------------|
-| **OpenDraft** | Free | ✅ Yes | ✅ Yes | ✅ Yes |
-| ChatGPT Plus | $20/mo | ❌ No | ❌ No | ❌ No |
-| Jasper | $49/mo | ❌ No | ❌ No | ✅ Yes |
-| Jenni AI | $20/mo | ❌ No | ⚠️ Partial | ✅ Yes |
-
-**OpenDraft is a free, open-source research draft generator with verified citations.**
-
----
-
-## Tech Stack
-
-- **Engine:** Python 3.10+, multi-agent orchestration
-- **Models:** Google Gemini 3, Anthropic Claude 4.5, OpenAI GPT-5
-- **Citations:** CrossRef API, OpenAlex API, Semantic Scholar API, arXiv API
-- **Export:** WeasyPrint (PDF), python-docx (Word)
-
----
-
-## Contributing
-
-Contributions welcome!
-
-**Ideas:**
-- Add new AI model support
-- Improve citation accuracy
-- Add export formats
-- Translate prompts
-
-Maintainer workflow docs:
-- Push/auth runbook: `docs/MAINTAINER_PUSH_RUNBOOK.md`
-- Automated push preflight: `scripts/push-preflight.sh`
-
----
-
-## Links
-
-- 🌐 **Website:** [opendraft.xyz](https://opendraft.xyz)
-- 📝 **Hosted Version:** [Join Waitlist](https://opendraft.xyz/waitlist)
-- 💬 **Discussions:** [GitHub Discussions](https://github.com/federicodeponte/opendraft/discussions)
-- 🐛 **Issues:** [Report Bug](https://github.com/federicodeponte/opendraft/issues)
-- 🗒️ **Changelog:** [CHANGELOG.md](CHANGELOG.md)
-- 📜 **License:** [MIT](LICENSE)
-
----
-
-## Summary
-
-**OpenDraft** is a free, open-source Python engine for generating academic research drafts. It uses 19 specialized AI agents to create drafts with citations verified against real databases (CrossRef, OpenAlex, Semantic Scholar, arXiv).
-
-**Keywords:** AI thesis writer, AI research paper generator, ChatGPT alternative, free thesis generator, open source AI writing, multi-agent AI, verified citations, Python thesis generator, academic writing 2025
-
----
-
-<p align="center">
-  <b>If OpenDraft helps your research, please star the repo!</b><br><br>
-  <a href="https://github.com/federicodeponte/opendraft">⭐ Star on GitHub</a>
-</p>
+OpenPaper is built on [OpenDraft](https://github.com/federicodeponte/opendraft) by Federico De Ponte (MIT). The agent底座 is [pi](https://github.com/earendil-works/pi) by Mario Zechner / Earendil (MIT). MIT License.
