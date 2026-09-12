@@ -1044,6 +1044,188 @@ def run_data_command(argv):
         return 1
 
 
+def run_tool_command(argv):
+    """Agent tool interface: `opendraft tool <name> --root <dir> --args '<json>'`.
+
+    Machine-facing: prints exactly one JSON envelope line on stdout.
+    Exit codes: 0 ok, 1 tool-level failure (or partial errors on list), 2 usage error.
+    """
+    import argparse
+    import json
+
+    parser = argparse.ArgumentParser(
+        prog="opendraft tool",
+        description="Agent tool interface. Prints one JSON envelope line on stdout.",
+    )
+    parser.add_argument("name", help="Tool name, or 'list' to list all tools")
+    parser.add_argument("--root", type=Path, default=Path.cwd(),
+                        help="Output directory the tool operates on (default: cwd)")
+    parser.add_argument("--args", default="{}",
+                        help="Tool arguments as a JSON object string (default '{}')")
+    parser.add_argument("--args-file", type=Path,
+                        help="Read tool arguments from a JSON file instead of --args")
+    parser.add_argument("--schema", action="store_true",
+                        help="Print the tool's input JSON schema instead of running it")
+    args = parser.parse_args(argv)
+
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    def _emit(payload, code):
+        # UTF-8 bytes to stdout regardless of console codepage — this is a machine contract.
+        line = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+        try:
+            sys.stdout.buffer.write(line)
+            sys.stdout.buffer.flush()
+        except (AttributeError, OSError):
+            print(json.dumps(payload, ensure_ascii=False))
+        return code
+
+    try:
+        from agent_tools import registry
+    except Exception as e:
+        return _emit({"ok": False, "error": f"tool layer unavailable: {type(e).__name__}: {e}"}, 2)
+
+    if args.name == "list":
+        available, errors = registry.list_tools()
+        return _emit({"ok": True, "data": {"tools": available, "errors": errors}},
+                     0 if not errors else 1)
+
+    try:
+        spec = registry.get_tool(args.name)
+    except KeyError as e:
+        return _emit({"ok": False, "error": str(e)}, 2)
+    except Exception as e:
+        return _emit({"ok": False, "error": f"tool failed to load: {type(e).__name__}: {e}"}, 2)
+
+    if args.schema:
+        return _emit({"ok": True, "data": {
+            "name": spec.name, "description": spec.description, "input_schema": spec.input_schema,
+        }}, 0)
+
+    try:
+        raw = args.args_file.read_text(encoding="utf-8") if args.args_file else args.args
+    except OSError as e:
+        return _emit({"ok": False, "error": f"cannot read args file: {e}"}, 2)
+    try:
+        tool_args = json.loads(raw)
+    except json.JSONDecodeError as e:
+        return _emit({"ok": False, "error": f"--args is not valid JSON: {e}"}, 2)
+    if not isinstance(tool_args, dict):
+        return _emit({"ok": False, "error": "--args must be a JSON object"}, 2)
+
+    try:
+        result = spec.func(tool_args, args.root)
+    except Exception as e:
+        result = {"ok": False, "error": f"{type(e).__name__}: {e}", "is_retryable": False}
+    return _emit(result, 0 if result.get("ok") else 1)
+
+
+def run_harness_command(argv):
+    """Agent harness driver: `opendraft harness section --root DIR --section NAME`.
+
+    Machine-facing: progress goes to stderr; stdout carries exactly one JSON envelope line
+    with the DriverResult summary. Exit codes: 0 ok, 1 run failed, 2 usage error.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="opendraft harness",
+        description="Drive one paper-writing session via the pi agent harness.",
+    )
+    sub = parser.add_subparsers(dest="harness_cmd", metavar="<command>")
+    p_section = sub.add_parser("section", help="Write one section with the pi agent loop")
+    p_section.add_argument("--root", type=Path, required=True,
+                           help="Paper output directory (the agent's working root)")
+    p_section.add_argument("--section", required=True,
+                           help="Section to write, e.g. literature_review")
+    p_section.add_argument("--model", default=None,
+                           help="pi model pattern (default: env PI_MODEL or minimax-cn/MiniMax-M3)")
+    p_section.add_argument("--max-cost", type=float, default=1.0,
+                           help="Budget in USD before steering wrap-up (default 1.0)")
+    p_section.add_argument("--max-turns", type=int, default=40,
+                           help="Max agent turns before steering wrap-up (default 40)")
+
+    args = parser.parse_args(argv)
+    if args.harness_cmd != "section":
+        parser.print_help()
+        return 2
+
+    def _progress(msg):
+        print(f"[harness] {msg}", file=sys.stderr, flush=True)
+
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from agent_tools.common import SECTION_FILES
+    if args.section not in SECTION_FILES:
+        _progress(f"error: unknown section '{args.section}' "
+                  f"(valid: {', '.join(sorted(SECTION_FILES))})")
+        return 2
+
+    from harness.driver import BudgetConfig, PiDriver
+    from harness.section_task import build_section_prompt
+
+    try:
+        prompt = build_section_prompt(args.root, args.section)
+        driver = PiDriver(
+            root=args.root,
+            model=args.model,
+            budget=BudgetConfig(max_cost_usd=args.max_cost, max_turns=args.max_turns),
+        )
+        _progress(f"root={driver.root} model={driver.model} pi={driver.pi_bin}")
+        _progress(f"budget: cost<=${args.max_cost} turns<={args.max_turns} — preparing …")
+        driver.prepare()
+        _progress(f"prompt ready ({len(prompt)} chars); starting pi session 'section-{args.section}' …")
+        result = driver.run(prompt, name=f"section-{args.section}")
+    except Exception as e:
+        _progress(f"error: {type(e).__name__}: {e}")
+        payload = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        print(json.dumps(payload, ensure_ascii=False))
+        return 1
+
+    _progress(
+        f"done: ok={result.ok} reason={result.reason} "
+        f"budget_exceeded={result.budget_exceeded}"
+    )
+
+    # Final acceptance (design §5.2/T8): the model may finish without self-checking
+    # (the PoC agent verified by hand with grep instead of score_draft). Re-sync the
+    # section file into the checkpoint — the model can edit files with pi's native
+    # write tool, which bypasses write_section's checkpoint sync — then score.
+    acceptance = None
+    if result.ok:
+        try:
+            from agent_tools.common import sync_checkpoint_section
+            from agent_tools.score import run as score_run
+
+            section_file = driver.root / SECTION_FILES[args.section]["file"]
+            if section_file.exists():
+                sync_checkpoint_section(driver.root, args.section,
+                                        section_file.read_text(encoding="utf-8"))
+            verdict = score_run({"scope": "section", "section": args.section}, driver.root)
+            acceptance = verdict.get("data") if verdict.get("ok") else {
+                "passed": False, "error": verdict.get("error"),
+            }
+            _progress(
+                f"acceptance: passed={acceptance.get('passed')} "
+                f"words={acceptance.get('words')} citations={len(acceptance.get('citations') or [])}"
+            )
+        except Exception as e:
+            _progress(f"acceptance check failed: {type(e).__name__}: {e}")
+
+    payload = {
+        "ok": result.ok,
+        "data": {
+            "reason": result.reason,
+            "budget_exceeded": result.budget_exceeded,
+            "stats": result.stats,
+            "journal_path": result.journal_path,
+            "settled_text": result.settled_text,
+            "acceptance": acceptance,
+        },
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0 if result.ok else 1
+
+
 def main():
     """Main CLI entry point."""
     import argparse
@@ -1059,6 +1241,10 @@ def main():
             return run_revise_command(sys.argv[2:])
         if cmd == 'data':
             return run_data_command(sys.argv[2:])
+        if cmd == 'tool':
+            return run_tool_command(sys.argv[2:])
+        if cmd == 'harness':
+            return run_harness_command(sys.argv[2:])
 
     parser = argparse.ArgumentParser(
         prog="opendraft",
