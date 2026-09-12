@@ -3,7 +3,7 @@
 
 # === LLM APIs ===
 anthropic>=0.20.0
-openai>=1.0.0
+openai>=2.54.0
 google-genai>=1.0.0  # Gemini SDK
 
 # === Citation Management ===
