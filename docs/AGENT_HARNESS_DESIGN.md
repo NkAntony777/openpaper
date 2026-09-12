@@ -493,3 +493,10 @@ pi 扩展、Driver、PoC 运行、离线测试：明日继续。
 ② `--tools` allowlist 实际没拦住 bash（pi 语义如此）→ 增加 `--exclude-tools bash,powershell`；
 ③ pi 原生 write 可绕过 guardrail 与 checkpoint 同步 → finalize 时按磁盘重同步。
 注意：工具面 JSON 契约写死"失败返回 envelope"，pi 侧 isError 只能 throw（extensions.md 明确）。
+
+**M2 PoC 结果（2026-09-12）**：全局 review 实战 PASS。素材 = PoC 真实 agent 写的文献综述 + 手写引言/方法学
+（故意埋 3 处跨节矛盾）。review 会话（$0.012，5 turns）产出 8 条 global_issues：
+3/3 预埋全捕获（引言承诺迭代检索 vs 方法学 single-shot；NRQA 术语未引入即使用；BM25-exclusive vs
+文献综述密集检索结论矛盾），另 5 条涌现发现（outline 承诺 Contriever 未交付、文献综述引用链格式风险、
+"问题命名但系统不解决"的悬置叙述、引用与主张不匹配、指标命名不一致）。
+scripts/review_demo_setup.py 可复现。非线性把控闭环：review → global_issues.md → 定向 revise。
