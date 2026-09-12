@@ -54,8 +54,6 @@ jobs:
 
       - name: Run Test Suite
         run: |
+          # pytest.ini deselects `-m integration`; the gold gates and the TS-smoke
+          # wrapper run inside the suite (TS smoke self-skips off Windows).
           python -m pytest tests -q
-
-      - name: Harness eval suite (gold fixtures)
-        run: |
-          python -m pytest tests/test_eval_suite.py::test_eval_gold_set_gates -q

@@ -147,9 +147,13 @@ class TestDigestCLI:
 class TestDigestOutput:
     """Tests for digest output handling."""
 
-    def test_generate_digest_creates_files(self, tmp_path):
+    def test_generate_digest_creates_files(self, tmp_path, monkeypatch):
         """Test that generate_digest creates expected output files."""
         from digest import generate_digest
+
+        # hermetic: the api-key guard in generate_script must see a key even in CI
+        # (google.genai is mocked below, so the value is never used)
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-used")
 
         # Create test document
         doc = tmp_path / "paper.md"

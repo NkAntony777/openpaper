@@ -119,12 +119,18 @@ def test_forbidden_positive_sentence_still_fires():
 # ------------------------------------------------------- revise invalidates passed
 
 
-def test_revise_invalidates_section_passed(tmp_path):
+def test_revise_invalidates_section_passed(tmp_path, monkeypatch):
     from agent_tools import registry
+    import agent_tools.revise as revise_mod
+
+    # hermetic: a unique find_replace must never touch the LLM path
+    def _no_llm(*a, **kw):
+        raise AssertionError("LLM revise must not be called for a unique find_replace")
+    monkeypatch.setattr(revise_mod, "_llm_revise", _no_llm)
 
     write_checkpoint(tmp_path, {"topic": "T", "word_targets": {"introduction": 20}})
     _intro(tmp_path, "Original introduction text that is long enough to survive "
-                     "any floor checks easily. " * 2)
+                     "any floor checks easily, with a different second clause here.")
     update_section_status(tmp_path, "introduction", status="written", passed=True,
                           updated_at="2026-01-01")
     spec = registry.get_tool("revise_section")
