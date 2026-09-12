@@ -340,11 +340,26 @@ generated_by: "OpenDraft AI - https://github.com/federicodeponte/opendraft"
         ctx.tracker.log_activity("📚 Compiling citations and references...", event_type="info", phase="compiling")
 
     compiler = CitationCompiler(database=ctx.citation_database, model=ctx.model)
-    reference_list = compiler.generate_reference_list(full_draft)
-    compiled_draft, replaced_ids, failed_ids = compiler.compile_citations(full_draft, research_missing=True, verbose=ctx.verbose)
+
+    # Compile FIRST: compile_citations researches {cite_MISSING:...} placeholders and
+    # mutates the database/citation_lookup with newly found citations. Generating the
+    # reference list afterwards (from the pre-compile tokens PLUS the new IDs) ensures
+    # auto-researched citations actually appear in the references.
+    known_ids_before = set(compiler.citation_lookup.keys())
+    compiled_draft, missing_ids, researched_topics = compiler.compile_citations(
+        full_draft, research_missing=True, verbose=ctx.verbose
+    )
+    newly_researched_ids = set(compiler.citation_lookup.keys()) - known_ids_before
+    cited_ids = {tok.strip("{}") for tok in re.findall(r"\{cite_\d{3}\}", full_draft)}
+    cited_ids |= newly_researched_ids
+    reference_list = compiler.generate_reference_list_for_ids(cited_ids, text=full_draft)
 
     if ctx.tracker:
-        ctx.tracker.log_activity(f"\u2705 Citations compiled ({len(replaced_ids)} references)", event_type="found", phase="compiling")
+        ctx.tracker.log_activity(
+            f"\u2705 Citations compiled ({len(cited_ids)} references, "
+            f"{len(researched_topics)} auto-researched)",
+            event_type="found", phase="compiling",
+        )
 
     # Remove template References section and append generated one
     compiled_draft = re.sub(

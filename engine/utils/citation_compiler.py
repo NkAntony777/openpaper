@@ -499,9 +499,25 @@ class CitationCompiler:
         Returns:
             str: Formatted reference list (header added if section doesn't exist or is placeholder)
         """
-        # Find all cited IDs in original format
-        cited_ids = self._extract_cited_ids(text)
+        return self.generate_reference_list_for_ids(self._extract_cited_ids(text), text=text)
 
+    def generate_reference_list_for_ids(self, cited_ids: Set[str], text: str = "") -> str:
+        """
+        Generate reference list for an explicit set of citation IDs.
+
+        Same formatting as generate_reference_list(), but takes the ID set directly —
+        use this when citations were researched/added after the source text was fixed
+        (e.g. {cite_MISSING} auto-research in compile_citations mutates the database,
+        so IDs cited only after that step never appear in the original text).
+
+        Args:
+            cited_ids: Citation IDs to include in the reference list
+            text: Optional source text for placeholder/content-full header detection.
+                  Defaults to "" (treated as "no existing References section").
+
+        Returns:
+            str: Formatted reference list (header added if section doesn't exist or is placeholder)
+        """
         # Get citations for cited IDs only
         cited_citations = [
             self.citation_lookup[cid]
