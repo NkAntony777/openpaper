@@ -19,7 +19,7 @@ from agent_tools.common import (
     update_section_status,
     word_target_max,
 )
-from agent_tools.envelope import ok, fail, ToolInputError, resolve_under_root
+from agent_tools.envelope import ToolInputError, fail, ok
 from utils.quality_gate import STRUCTURE_ERROR_PATTERNS, score_texts
 
 CITE_REF_RE = re.compile(r"\{cite_(\d+)\}")
@@ -80,7 +80,14 @@ def _score_full(root: Path) -> Dict:
     hints = _checkpoint_hints(root)
     texts = _read_section_texts(root)
     body = "\n\n".join(
-        t for t in (texts["literature_review"], texts["methodology"], texts["results"], texts["discussion"]) if t
+        t
+        for t in (
+            texts["literature_review"],
+            texts["methodology"],
+            texts["results"],
+            texts["discussion"],
+        )
+        if t
     )
     q = score_texts(
         texts={
@@ -96,25 +103,28 @@ def _score_full(root: Path) -> Dict:
     )
     issues = [asdict(i) for i in q.structured_issues]
     status_ledger = update_section_status(
-        root, FULL_LEDGER_KEY,
+        root,
+        FULL_LEDGER_KEY,
         last_total=q.total_score,
         last_passed=q.passed,
         open_issues=_open_issue_messages(issues),
         updated_at=datetime.now().isoformat(timespec="seconds"),
     )
-    return ok({
-        "scope": "full",
-        "total": q.total_score,
-        "passed": q.passed,
-        "breakdown": {
-            "word_count": q.word_count_score,
-            "citations": q.citation_score,
-            "completeness": q.completeness_score,
-            "structure": q.structure_score,
-        },
-        "issues": issues,
-        "status_ledger": status_ledger,
-    })
+    return ok(
+        {
+            "scope": "full",
+            "total": q.total_score,
+            "passed": q.passed,
+            "breakdown": {
+                "word_count": q.word_count_score,
+                "citations": q.citation_score,
+                "completeness": q.completeness_score,
+                "structure": q.structure_score,
+            },
+            "issues": issues,
+            "status_ledger": status_ledger,
+        }
+    )
 
 
 def _score_section(root: Path, section: str) -> Dict:
@@ -131,11 +141,23 @@ def _score_section(root: Path, section: str) -> Dict:
 
     issues = []
     if not content.strip():
-        issues.append({"metric": "present", "severity": "error", "message": "section file is empty or missing"})
+        issues.append(
+            {
+                "metric": "present",
+                "severity": "error",
+                "message": "section file is empty or missing",
+            }
+        )
     if floor and words < floor:
-        issues.append({"metric": "word_count", "severity": "warning",
-                       "actual": words, "target": target,
-                       "message": f"section short: {words} words (floor {floor}, target {target})"})
+        issues.append(
+            {
+                "metric": "word_count",
+                "severity": "warning",
+                "actual": words,
+                "target": target,
+                "message": f"section short: {words} words (floor {floor}, target {target})",
+            }
+        )
     for pattern, _metric, message in STRUCTURE_ERROR_PATTERNS:
         if re.search(pattern, content, re.IGNORECASE):
             issues.append({"metric": "placeholder", "severity": "error", "message": message})
@@ -145,23 +167,26 @@ def _score_section(root: Path, section: str) -> Dict:
     passed = bool(content.strip()) and not hard_failed and not word_failed
 
     status_ledger = update_section_status(
-        root, section,
+        root,
+        section,
         passed=passed,
         open_issues=_open_issue_messages(issues),
         updated_at=datetime.now().isoformat(timespec="seconds"),
     )
 
-    return ok({
-        "scope": "section",
-        "section": section,
-        "words": words,
-        "target_words": target,
-        "citations": refs,
-        "cite_missing_placeholders": len(CITE_MISSING_RE.findall(content)),
-        "issues": issues,
-        "passed": passed,
-        "status_ledger": status_ledger,
-    })
+    return ok(
+        {
+            "scope": "section",
+            "section": section,
+            "words": words,
+            "target_words": target,
+            "citations": refs,
+            "cite_missing_placeholders": len(CITE_MISSING_RE.findall(content)),
+            "issues": issues,
+            "passed": passed,
+            "status_ledger": status_ledger,
+        }
+    )
 
 
 def run(args: Dict, root: Path) -> Dict:
@@ -179,9 +204,11 @@ def run(args: Dict, root: Path) -> Dict:
         return fail(f"artifact not found: {e.filename}")
 
 
-registry.register(registry.ToolSpec(
-    name="score_draft",
-    description=DESCRIPTION,
-    input_schema=INPUT_SCHEMA,
-    func=run,
-))
+registry.register(
+    registry.ToolSpec(
+        name="score_draft",
+        description=DESCRIPTION,
+        input_schema=INPUT_SCHEMA,
+        func=run,
+    )
+)

@@ -13,11 +13,12 @@ audits it for issues like:
 """
 
 import os
-import sys
 import re
 import socket
-from pathlib import Path
+import sys
 from collections import Counter
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -28,6 +29,7 @@ if str(PROJECT_ROOT) not in sys.path:
 load_dotenv(PROJECT_ROOT / ".env.local", override=True)
 
 from google import genai
+
 from engine.utils.gemini_client import GeminiModelWrapper
 
 
@@ -76,7 +78,7 @@ def is_network_error(exc: Exception) -> bool:
 def load_prompt(prompt_path: str) -> str:
     """Load prompt file"""
     path = PROJECT_ROOT / prompt_path
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
 
@@ -136,21 +138,21 @@ class OutputAuditor:
     def audit_overconfident_claims(self):
         """Check for overconfident language"""
         overconfident_patterns = [
-            (r'\bindisputable\b', "indisputable"),
-            (r'\bproves conclusively\b', "proves conclusively"),
-            (r'\bwithout doubt\b', "without doubt"),
-            (r'\bthe only\b', "the only"),
-            (r'\bthe best\b', "the best"),
-            (r'\brevolutionary\b', "revolutionary"),
-            (r'\bparadigm shift\b', "paradigm shift"),
-            (r'\balways\b', "always"),
-            (r'\bnever\b', "never"),
-            (r'\bperfect\b', "perfect"),
-            (r'\bsolves\b', "solves (should be 'addresses')"),
-            (r'\bproves\b', "proves (should be 'supports')"),
-            (r'\bundeniable\b', "undeniable"),
-            (r'\bunquestionable\b', "unquestionable"),
-            (r'\bdefinitively\b', "definitively"),
+            (r"\bindisputable\b", "indisputable"),
+            (r"\bproves conclusively\b", "proves conclusively"),
+            (r"\bwithout doubt\b", "without doubt"),
+            (r"\bthe only\b", "the only"),
+            (r"\bthe best\b", "the best"),
+            (r"\brevolutionary\b", "revolutionary"),
+            (r"\bparadigm shift\b", "paradigm shift"),
+            (r"\balways\b", "always"),
+            (r"\bnever\b", "never"),
+            (r"\bperfect\b", "perfect"),
+            (r"\bsolves\b", "solves (should be 'addresses')"),
+            (r"\bproves\b", "proves (should be 'supports')"),
+            (r"\bundeniable\b", "undeniable"),
+            (r"\bunquestionable\b", "unquestionable"),
+            (r"\bdefinitively\b", "definitively"),
         ]
 
         found = []
@@ -162,19 +164,19 @@ class OutputAuditor:
         if found:
             self.issues.append(f"OVERCONFIDENT CLAIMS: {', '.join(found)}")
 
-        self.stats['overconfident_count'] = len(found)
+        self.stats["overconfident_count"] = len(found)
 
     def audit_fake_methodology(self):
         """Check for fake systematic review language"""
         fake_patterns = [
-            (r'systematic review', "systematic review (should be 'narrative review')"),
-            (r'PRISMA', "PRISMA (not applicable)"),
-            (r'records identified', "records identified (fake PRISMA)"),
-            (r'records screened', "records screened (fake PRISMA)"),
-            (r'duplicates removed', "duplicates removed (fake PRISMA)"),
-            (r'inter-rater', "inter-rater reliability (not applicable)"),
-            (r'risk of bias assessment', "risk of bias (not applicable)"),
-            (r'quality assessment.*conducted', "quality assessment conducted"),
+            (r"systematic review", "systematic review (should be 'narrative review')"),
+            (r"PRISMA", "PRISMA (not applicable)"),
+            (r"records identified", "records identified (fake PRISMA)"),
+            (r"records screened", "records screened (fake PRISMA)"),
+            (r"duplicates removed", "duplicates removed (fake PRISMA)"),
+            (r"inter-rater", "inter-rater reliability (not applicable)"),
+            (r"risk of bias assessment", "risk of bias (not applicable)"),
+            (r"quality assessment.*conducted", "quality assessment conducted"),
         ]
 
         found = []
@@ -186,37 +188,40 @@ class OutputAuditor:
             self.issues.append(f"FAKE METHODOLOGY: {', '.join(found)}")
 
         # Check for correct methodology language
-        if re.search(r'narrative review', self.text, re.IGNORECASE):
-            self.stats['has_narrative_review'] = True
+        if re.search(r"narrative review", self.text, re.IGNORECASE):
+            self.stats["has_narrative_review"] = True
         else:
             self.warnings.append("Missing 'narrative review' declaration")
 
     def audit_citations(self):
         """Check citation patterns"""
         # Count citations
-        citations = re.findall(r'\{cite_\d+\}', self.text)
-        self.stats['citation_count'] = len(citations)
+        citations = re.findall(r"\{cite_\d+\}", self.text)
+        self.stats["citation_count"] = len(citations)
 
         # Check for uncited claims (statistics without citations)
         uncited_stats = re.findall(
-            r'(\d+(?:\.\d+)?%|\d+(?:\.\d+)? percent)(?![^{]*\{cite_)',
-            self.text
+            r"(\d+(?:\.\d+)?%|\d+(?:\.\d+)? percent)(?![^{]*\{cite_)", self.text
         )
         if uncited_stats:
-            self.warnings.append(f"UNCITED STATISTICS: {len(uncited_stats)} percentages without citations")
+            self.warnings.append(
+                f"UNCITED STATISTICS: {len(uncited_stats)} percentages without citations"
+            )
 
         # Check citation density (should have ~1 citation per 100-150 words)
         word_count = len(self.text.split())
         expected_citations = word_count // 125
         if len(citations) < expected_citations * 0.5:
-            self.warnings.append(f"LOW CITATION DENSITY: {len(citations)} citations for {word_count} words")
+            self.warnings.append(
+                f"LOW CITATION DENSITY: {len(citations)} citations for {word_count} words"
+            )
 
         # Check for [VERIFY] markers
-        verify_count = len(re.findall(r'\[VERIFY\]', self.text))
+        verify_count = len(re.findall(r"\[VERIFY\]", self.text))
         if verify_count > 0:
             self.warnings.append(f"UNVERIFIED CLAIMS: {verify_count} [VERIFY] markers")
 
-        self.stats['uncited_stats'] = len(uncited_stats)
+        self.stats["uncited_stats"] = len(uncited_stats)
 
     def audit_repetition(self):
         """Check for repetitive phrases"""
@@ -224,9 +229,9 @@ class OutputAuditor:
         words = self.text.lower().split()
         phrases = []
         for i in range(len(words) - 2):
-            phrase = ' '.join(words[i:i+3])
+            phrase = " ".join(words[i : i + 3])
             # Filter out common phrases
-            if not any(x in phrase for x in ['of the', 'in the', 'to the', 'and the', 'for the']):
+            if not any(x in phrase for x in ["of the", "in the", "to the", "and the", "for the"]):
                 phrases.append(phrase)
 
         phrase_counts = Counter(phrases)
@@ -234,34 +239,46 @@ class OutputAuditor:
 
         if repeated:
             top_repeated = sorted(repeated, key=lambda x: -x[1])[:5]
-            self.warnings.append(f"REPEATED PHRASES: {', '.join([f'{p} ({c}x)' for p, c in top_repeated])}")
+            self.warnings.append(
+                f"REPEATED PHRASES: {', '.join([f'{p} ({c}x)' for p, c in top_repeated])}"
+            )
 
         # Check crutch words
-        crutch_words = ['significant', 'important', 'notable', 'interesting', 'clearly']
+        crutch_words = ["significant", "important", "notable", "interesting", "clearly"]
         for word in crutch_words:
-            count = len(re.findall(rf'\b{word}\w*\b', self.text, re.IGNORECASE))
+            count = len(re.findall(rf"\b{word}\w*\b", self.text, re.IGNORECASE))
             if count > 5:
                 self.warnings.append(f"OVERUSED WORD: '{word}' appears {count} times")
 
-        self.stats['repeated_phrases'] = len(repeated)
+        self.stats["repeated_phrases"] = len(repeated)
 
     def audit_grammar(self):
         """Check common grammar issues"""
         # Data plurality
-        if re.search(r'\bdata (is|was|has)\b', self.text, re.IGNORECASE):
-            self.warnings.append("GRAMMAR: 'data' used as singular (should be plural: 'data are/were/have')")
+        if re.search(r"\bdata (is|was|has)\b", self.text, re.IGNORECASE):
+            self.warnings.append(
+                "GRAMMAR: 'data' used as singular (should be plural: 'data are/were/have')"
+            )
 
         # Which vs that
-        which_errors = re.findall(r'\w+\s+which\s+\w+', self.text)
+        _which_errors = re.findall(r"\w+\s+which\s+\w+", self.text)
         # This is a rough check - not all 'which' usages are wrong
 
-        self.stats['data_as_singular'] = bool(re.search(r'\bdata (is|was|has)\b', self.text, re.IGNORECASE))
+        self.stats["data_as_singular"] = bool(
+            re.search(r"\bdata (is|was|has)\b", self.text, re.IGNORECASE)
+        )
 
     def audit_technical_precision(self):
         """Check for imprecise technical descriptions"""
         imprecise_patterns = [
-            (r'measures? (biological )?aging', "Imprecise: 'measures aging' - should specify what is predicted"),
-            (r'trained on.*rate of change', "Imprecise: DunedinPACE description - should clarify derivation chain"),
+            (
+                r"measures? (biological )?aging",
+                "Imprecise: 'measures aging' - should specify what is predicted",
+            ),
+            (
+                r"trained on.*rate of change",
+                "Imprecise: DunedinPACE description - should clarify derivation chain",
+            ),
         ]
 
         for pattern, description in imprecise_patterns:
@@ -270,40 +287,60 @@ class OutputAuditor:
 
     def audit_document_consistency(self):
         """Check for document type consistency"""
-        paper_refs = len(re.findall(r'\bthis paper\b', self.text, re.IGNORECASE))
-        thesis_refs = len(re.findall(r'\bthis thesis\b', self.text, re.IGNORECASE))
-        study_refs = len(re.findall(r'\bthis study\b', self.text, re.IGNORECASE))
-        review_refs = len(re.findall(r'\bthis review\b', self.text, re.IGNORECASE))
+        paper_refs = len(re.findall(r"\bthis paper\b", self.text, re.IGNORECASE))
+        thesis_refs = len(re.findall(r"\bthis thesis\b", self.text, re.IGNORECASE))
+        study_refs = len(re.findall(r"\bthis study\b", self.text, re.IGNORECASE))
+        review_refs = len(re.findall(r"\bthis review\b", self.text, re.IGNORECASE))
 
         types_used = []
-        if paper_refs: types_used.append(f"paper ({paper_refs})")
-        if thesis_refs: types_used.append(f"thesis ({thesis_refs})")
-        if study_refs: types_used.append(f"study ({study_refs})")
-        if review_refs: types_used.append(f"review ({review_refs})")
+        if paper_refs:
+            types_used.append(f"paper ({paper_refs})")
+        if thesis_refs:
+            types_used.append(f"thesis ({thesis_refs})")
+        if study_refs:
+            types_used.append(f"study ({study_refs})")
+        if review_refs:
+            types_used.append(f"review ({review_refs})")
 
         if len(types_used) > 1:
-            self.warnings.append(f"DOCUMENT TYPE INCONSISTENCY: Mixed references - {', '.join(types_used)}")
+            self.warnings.append(
+                f"DOCUMENT TYPE INCONSISTENCY: Mixed references - {', '.join(types_used)}"
+            )
 
-        self.stats['document_types'] = types_used
+        self.stats["document_types"] = types_used
 
     def audit_hedging(self):
         """Check hedging language balance"""
-        strong_hedges = len(re.findall(r'\b(suggests?|indicates?|may|might|could|appears?)\b', self.text, re.IGNORECASE))
-        strong_claims = len(re.findall(r'\b(demonstrates?|shows?|proves?|establishes?|confirms?)\b', self.text, re.IGNORECASE))
+        strong_hedges = len(
+            re.findall(
+                r"\b(suggests?|indicates?|may|might|could|appears?)\b",
+                self.text,
+                re.IGNORECASE,
+            )
+        )
+        strong_claims = len(
+            re.findall(
+                r"\b(demonstrates?|shows?|proves?|establishes?|confirms?)\b",
+                self.text,
+                re.IGNORECASE,
+            )
+        )
 
-        self.stats['hedges'] = strong_hedges
-        self.stats['strong_claims'] = strong_claims
+        self.stats["hedges"] = strong_hedges
+        self.stats["strong_claims"] = strong_claims
 
         if strong_claims > strong_hedges * 2:
-            self.warnings.append(f"HEDGING IMBALANCE: {strong_claims} strong claims vs {strong_hedges} hedged statements")
+            self.warnings.append(
+                f"HEDGING IMBALANCE: {strong_claims} strong claims vs {strong_hedges} hedged statements"
+            )
 
     def audit_banned_phrases(self):
         """Check for discovery tool links and other banned content"""
         banned_urls = [
-            (r'semanticscholar\.org', "Semantic Scholar link"),
-            (r'scholar\.google', "Google Scholar link"),
-            (r'researchgate\.net', "ResearchGate link"),
-            (r'academia\.edu', "Academia.edu link"),
+            (r"semanticscholar\.org", "Semantic Scholar link"),
+            (r"scholar\.google", "Google Scholar link"),
+            (r"researchgate\.net", "ResearchGate link"),
+            (r"academia\.edu", "Academia.edu link"),
         ]
 
         for pattern, description in banned_urls:
@@ -313,14 +350,14 @@ class OutputAuditor:
     def audit_leaked_metadata(self):
         """Check for metadata that should not appear in output"""
         metadata_patterns = [
-            (r'\*\*Section:\*\*', "Section metadata leaked"),
-            (r'\*\*Word Count:\*\*', "Word count metadata leaked"),
-            (r'\*\*Status:\*\*.*Draft', "Status metadata leaked"),
-            (r'\*\*Citations Used\*\*', "Citations summary leaked"),
-            (r'\*\*Notes for Revision\*\*', "Revision notes leaked"),
-            (r'## Citations Used', "Citations section leaked"),
-            (r'## Notes for', "Notes section leaked"),
-            (r'\[TODO\]', "TODO markers in output"),
+            (r"\*\*Section:\*\*", "Section metadata leaked"),
+            (r"\*\*Word Count:\*\*", "Word count metadata leaked"),
+            (r"\*\*Status:\*\*.*Draft", "Status metadata leaked"),
+            (r"\*\*Citations Used\*\*", "Citations summary leaked"),
+            (r"\*\*Notes for Revision\*\*", "Revision notes leaked"),
+            (r"## Citations Used", "Citations section leaked"),
+            (r"## Notes for", "Notes section leaked"),
+            (r"\[TODO\]", "TODO markers in output"),
         ]
 
         found = []
@@ -331,11 +368,11 @@ class OutputAuditor:
         if found:
             self.issues.append(f"LEAKED METADATA: {', '.join(found)}")
 
-        self.stats['leaked_metadata'] = len(found)
+        self.stats["leaked_metadata"] = len(found)
 
     def audit_missing_citations(self):
         """Check for MISSING citation markers"""
-        missing = re.findall(r'\{cite_MISSING[^}]*\}', self.text)
+        missing = re.findall(r"\{cite_MISSING[^}]*\}", self.text)
         if missing:
             self.issues.append(f"MISSING CITATIONS: {len(missing)} cite_MISSING markers found")
             # Show first few examples
@@ -343,17 +380,17 @@ class OutputAuditor:
             for ex in examples:
                 self.warnings.append(f"  Example: {ex[:60]}...")
 
-        self.stats['missing_citations'] = len(missing)
+        self.stats["missing_citations"] = len(missing)
 
     def audit_planning_leakage(self):
         """Check for planning/thinking content that leaked into output"""
         planning_patterns = [
-            (r'^Okay,? I (understand|will|am going)', "Planning preamble leaked"),
+            (r"^Okay,? I (understand|will|am going)", "Planning preamble leaked"),
             (r"Here's (the plan|my plan|the output)", "Planning statement leaked"),
-            (r'\d+\.\s+\*\*[A-Z][^*]+\*\*:', "Numbered planning steps leaked"),
-            (r'I will (write|generate|create|ensure)', "Intent statement leaked"),
-            (r'Before (writing|generating|I begin)', "Pre-writing statement leaked"),
-            (r'Let me (first|start|begin)', "Let me statement leaked"),
+            (r"\d+\.\s+\*\*[A-Z][^*]+\*\*:", "Numbered planning steps leaked"),
+            (r"I will (write|generate|create|ensure)", "Intent statement leaked"),
+            (r"Before (writing|generating|I begin)", "Pre-writing statement leaked"),
+            (r"Let me (first|start|begin)", "Let me statement leaked"),
         ]
 
         found = []
@@ -364,17 +401,17 @@ class OutputAuditor:
         if found:
             self.issues.append(f"PLANNING LEAKAGE: {', '.join(found)}")
 
-        self.stats['planning_leakage'] = len(found)
+        self.stats["planning_leakage"] = len(found)
 
     def report(self):
         """Generate audit report"""
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("OUTPUT AUDIT REPORT")
-        print("="*70)
+        print("=" * 70)
 
         # Stats
         print("\n📊 STATISTICS")
-        print("-"*40)
+        print("-" * 40)
         print(f"  Word count: {len(self.text.split())}")
         print(f"  Citation count: {self.stats.get('citation_count', 0)}")
         print(f"  Hedged statements: {self.stats.get('hedges', 0)}")
@@ -383,7 +420,7 @@ class OutputAuditor:
         # Issues (critical)
         if self.issues:
             print("\n🔴 CRITICAL ISSUES")
-            print("-"*40)
+            print("-" * 40)
             for issue in self.issues:
                 print(f"  ❌ {issue}")
         else:
@@ -392,16 +429,16 @@ class OutputAuditor:
         # Warnings
         if self.warnings:
             print("\n🟡 WARNINGS")
-            print("-"*40)
+            print("-" * 40)
             for warning in self.warnings:
                 print(f"  ⚠️  {warning}")
         else:
             print("\n✅ No warnings")
 
         # Summary
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print(f"  Critical issues: {len(self.issues)}")
         print(f"  Warnings: {len(self.warnings)}")
 
@@ -416,9 +453,9 @@ class OutputAuditor:
 
 
 def main():
-    print("="*70)
+    print("=" * 70)
     print("OPENDRAFT OUTPUT AUDITOR")
-    print("="*70)
+    print("=" * 70)
 
     if not has_api_key():
         print("\n⏭️  SKIP: No GOOGLE_API_KEY/GEMINI_API_KEY configured")
@@ -435,7 +472,7 @@ def main():
 
         print(f"\nGenerated {len(text.split())} words")
         print("\nPreview (first 500 chars):")
-        print("-"*40)
+        print("-" * 40)
         print(text[:500] + "...")
 
         # Run audit
@@ -445,7 +482,7 @@ def main():
 
         # Save output for manual review
         output_path = PROJECT_ROOT / "tests" / "audit_sample.md"
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             f.write(text)
         print(f"\n📄 Full output saved to: {output_path}")
 
@@ -457,6 +494,7 @@ def main():
             return 0
         print(f"\n❌ ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

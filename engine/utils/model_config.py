@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class ModelPricing:
     """Pricing per 1M tokens for a given model."""
-    input_price: float   # USD per 1M input tokens
+
+    input_price: float  # USD per 1M input tokens
     output_price: float  # USD per 1M output tokens
     name: str = ""
     display_name: str = ""

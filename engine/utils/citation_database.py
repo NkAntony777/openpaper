@@ -6,36 +6,191 @@ ABOUTME: Provides schema validation, loading, and saving for citation databases
 
 import json
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Literal
 from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Literal, Optional
 
 logger = logging.getLogger(__name__)
 
 
 # Words that should stay lowercase in title case (except at start)
 LOWERCASE_WORDS = {
-    'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'in', 'nor', 'of', 'on',
-    'or', 'so', 'the', 'to', 'up', 'yet', 'is', 'are', 'was', 'were', 'be',
-    'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-    'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'with', 'from',
-    'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between',
-    'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where',
-    'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
-    'no', 'not', 'only', 'own', 'same', 'than', 'too', 'very', 'just', 'also'
+    "a",
+    "an",
+    "and",
+    "as",
+    "at",
+    "but",
+    "by",
+    "for",
+    "in",
+    "nor",
+    "of",
+    "on",
+    "or",
+    "so",
+    "the",
+    "to",
+    "up",
+    "yet",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "must",
+    "shall",
+    "can",
+    "with",
+    "from",
+    "into",
+    "through",
+    "during",
+    "before",
+    "after",
+    "above",
+    "below",
+    "between",
+    "under",
+    "again",
+    "further",
+    "then",
+    "once",
+    "here",
+    "there",
+    "when",
+    "where",
+    "why",
+    "how",
+    "all",
+    "each",
+    "few",
+    "more",
+    "most",
+    "other",
+    "some",
+    "such",
+    "no",
+    "not",
+    "only",
+    "own",
+    "same",
+    "than",
+    "too",
+    "very",
+    "just",
+    "also",
 }
 
 # Acronyms that should stay uppercase
 COMMON_ACRONYMS = {
-    'AI', 'ML', 'NLP', 'API', 'CPU', 'GPU', 'IoT', 'USA', 'UK', 'EU', 'UN',
-    'WHO', 'GDP', 'CEO', 'CTO', 'CFO', 'HR', 'IT', 'R&D', 'B2B', 'B2C', 'SaaS',
-    'DNA', 'RNA', 'HIV', 'AIDS', 'COVID', 'MRI', 'CT', 'ICU', 'FDA', 'NIH',
-    'NASA', 'ESA', 'CERN', 'MIT', 'UCLA', 'IEEE', 'ACM', 'AAAI', 'NIST',
-    'ISO', 'GDPR', 'HIPAA', 'SOC', 'PCI', 'DSS', 'VPN', 'SSL', 'TLS', 'HTTP',
-    'HTTPS', 'SQL', 'NoSQL', 'REST', 'SOAP', 'JSON', 'XML', 'HTML', 'CSS', 'JS',
-    'PHP', 'AWS', 'GCP', 'ROI', 'KPI', 'CRM', 'ERP', 'SME', 'SMB', 'IPO', 'VC',
-    'PE', 'M&A', 'P&L', 'EBITDA', 'CAGR', 'YoY', 'QoQ', 'MoM', 'LTV', 'CAC',
-    'NPS', 'ARPU', 'DAU', 'MAU', 'WAU', 'UX', 'UI', 'PM', 'MVP', 'POC', 'UAT'
+    "AI",
+    "ML",
+    "NLP",
+    "API",
+    "CPU",
+    "GPU",
+    "IoT",
+    "USA",
+    "UK",
+    "EU",
+    "UN",
+    "WHO",
+    "GDP",
+    "CEO",
+    "CTO",
+    "CFO",
+    "HR",
+    "IT",
+    "R&D",
+    "B2B",
+    "B2C",
+    "SaaS",
+    "DNA",
+    "RNA",
+    "HIV",
+    "AIDS",
+    "COVID",
+    "MRI",
+    "CT",
+    "ICU",
+    "FDA",
+    "NIH",
+    "NASA",
+    "ESA",
+    "CERN",
+    "MIT",
+    "UCLA",
+    "IEEE",
+    "ACM",
+    "AAAI",
+    "NIST",
+    "ISO",
+    "GDPR",
+    "HIPAA",
+    "SOC",
+    "PCI",
+    "DSS",
+    "VPN",
+    "SSL",
+    "TLS",
+    "HTTP",
+    "HTTPS",
+    "SQL",
+    "NoSQL",
+    "REST",
+    "SOAP",
+    "JSON",
+    "XML",
+    "HTML",
+    "CSS",
+    "JS",
+    "PHP",
+    "AWS",
+    "GCP",
+    "ROI",
+    "KPI",
+    "CRM",
+    "ERP",
+    "SME",
+    "SMB",
+    "IPO",
+    "VC",
+    "PE",
+    "M&A",
+    "P&L",
+    "EBITDA",
+    "CAGR",
+    "YoY",
+    "QoQ",
+    "MoM",
+    "LTV",
+    "CAC",
+    "NPS",
+    "ARPU",
+    "DAU",
+    "MAU",
+    "WAU",
+    "UX",
+    "UI",
+    "PM",
+    "MVP",
+    "POC",
+    "UAT",
 }
 
 
@@ -74,26 +229,26 @@ def normalize_title(title: str) -> str:
 
     for i, word in enumerate(words):
         # Strip punctuation for checking
-        clean_word = word.strip('.,;:!?()[]{}"\'-–—')
+        clean_word = word.strip(".,;:!?()[]{}\"'-–—")
         upper_clean = clean_word.upper()
 
         # Check if previous word ended with colon (word after colon should be capitalized)
         is_start_of_segment = (i == 0) or after_colon
 
         # Check if it's a known acronym or acronym with numbers (COVID-19, etc.)
-        base_word = clean_word.split('-')[0].upper() if '-' in clean_word else upper_clean
+        base_word = clean_word.split("-")[0].upper() if "-" in clean_word else upper_clean
         if upper_clean in COMMON_ACRONYMS or base_word in COMMON_ACRONYMS:
             # Preserve acronym but with original punctuation
             # For hyphenated acronyms like COVID-19, preserve format
-            if '-' in clean_word:
-                parts = clean_word.split('-')
+            if "-" in clean_word:
+                parts = clean_word.split("-")
                 normalized_parts = []
                 for part in parts:
                     if part.upper() in COMMON_ACRONYMS or part.isdigit():
                         normalized_parts.append(part.upper())
                     else:
                         normalized_parts.append(part.capitalize())
-                normalized = word.replace(clean_word, '-'.join(normalized_parts))
+                normalized = word.replace(clean_word, "-".join(normalized_parts))
             else:
                 normalized = word.replace(clean_word, upper_clean)
         # Check if it's a lowercase word (not at start of segment)
@@ -110,9 +265,9 @@ def normalize_title(title: str) -> str:
         normalized_words.append(normalized)
 
         # Check if this word ends with colon
-        after_colon = word.endswith(':')
+        after_colon = word.endswith(":")
 
-    result = ' '.join(normalized_words)
+    result = " ".join(normalized_words)
 
     # Ensure first character is uppercase
     if result and result[0].islower():
@@ -122,7 +277,17 @@ def normalize_title(title: str) -> str:
 
 
 # Type definitions for citations
-CitationSourceType = Literal["journal", "book", "report", "website", "conference", "case", "statute", "constitution", "treaty"]
+CitationSourceType = Literal[
+    "journal",
+    "book",
+    "report",
+    "website",
+    "conference",
+    "case",
+    "statute",
+    "constitution",
+    "treaty",
+]
 # Supported citation styles
 # Note: Chicago and MLA are planned but not yet implemented
 # See: docs/CITATION_STYLES_ROADMAP.md
@@ -225,7 +390,7 @@ class Citation:
         return data
 
     @staticmethod
-    def from_dict(data: Dict) -> 'Citation':
+    def from_dict(data: Dict) -> "Citation":
         """Create Citation from dictionary."""
         return Citation(
             citation_id=data["id"],
@@ -276,11 +441,11 @@ class CitationDatabase:
                 "citation_style": self.citation_style,
                 "draft_language": self.draft_language,
                 "extracted_date": self.extracted_date,
-            }
+            },
         }
 
     @staticmethod
-    def from_dict(data: Dict) -> 'CitationDatabase':
+    def from_dict(data: Dict) -> "CitationDatabase":
         """Create CitationDatabase from dictionary."""
         citations = [Citation.from_dict(c) for c in data["citations"]]
         metadata = data.get("metadata", {})
@@ -334,21 +499,31 @@ class CitationDatabase:
             current_year = datetime.now().year
             max_year = current_year + 2
             if citation.year > max_year:
-                logger.warning(f"Citation {citation.id} has future year {citation.year}, clamping to {current_year}")
+                logger.warning(
+                    f"Citation {citation.id} has future year {citation.year}, clamping to {current_year}"
+                )
                 citation.year = current_year
             elif citation.year < 1900:
-                logger.warning(f"Citation {citation.id} has invalid year {citation.year}, clamping to 1900")
+                logger.warning(
+                    f"Citation {citation.id} has invalid year {citation.year}, clamping to 1900"
+                )
                 citation.year = 1900
 
             # Validate DOI format if present
             if citation.doi and not citation.doi.startswith("10."):
-                logger.warning(f"Citation {citation.id} has questionable DOI format: {citation.doi}")
+                logger.warning(
+                    f"Citation {citation.id} has questionable DOI format: {citation.doi}"
+                )
 
             # Validate source-specific fields (log warnings for AI-extracted citations)
             if citation.source_type == "journal" and not citation.journal:
-                logger.warning(f"Journal citation {citation.id} missing journal name - may impact APA formatting")
+                logger.warning(
+                    f"Journal citation {citation.id} missing journal name - may impact APA formatting"
+                )
             if citation.source_type in ["book", "report"] and not citation.publisher:
-                logger.warning(f"{citation.source_type.capitalize()} citation {citation.id} missing publisher - may impact APA formatting")
+                logger.warning(
+                    f"{citation.source_type.capitalize()} citation {citation.id} missing publisher - may impact APA formatting"
+                )
 
         return True
 
@@ -383,7 +558,9 @@ def validate_citation_database(db_dict: Dict) -> bool:
     actual_count = len(db_dict["citations"])
     claimed_count = metadata["total_citations"]
     if actual_count != claimed_count:
-        logger.warning(f"Metadata claims {claimed_count} citations but found {actual_count} - auto-fixing metadata")
+        logger.warning(
+            f"Metadata claims {claimed_count} citations but found {actual_count} - auto-fixing metadata"
+        )
         # Auto-fix metadata count instead of crashing (deduplication/filtering may have changed count)
         metadata["total_citations"] = actual_count
 
@@ -412,7 +589,7 @@ def load_citation_database(path: Path) -> CitationDatabase:
     if not path.exists():
         raise FileNotFoundError(f"Citation database not found: {path}")
 
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Validate before creating object
@@ -439,13 +616,12 @@ def save_citation_database(db: CitationDatabase, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     # Save with proper formatting
-    with open(path, 'w', encoding='utf-8') as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(db.to_dict(), f, indent=2, ensure_ascii=False)
 
 
 def create_empty_database(
-    citation_style: CitationStyle = "APA 7th",
-    draft_language: Language = "english"
+    citation_style: CitationStyle = "APA 7th", draft_language: Language = "english"
 ) -> CitationDatabase:
     """
     Create empty citation database with metadata.
@@ -476,7 +652,22 @@ def has_more_metadata(citation_a: Citation, citation_b: Citation) -> bool:
         bool: True if citation_a has more complete metadata than citation_b
     """
     # Count non-None optional fields for each citation
-    optional_fields = ['journal', 'publisher', 'volume', 'issue', 'pages', 'doi', 'url', 'access_date', 'abstract', 'citation_count', 'court', 'law_report', 'parties', 'section']
+    optional_fields = [
+        "journal",
+        "publisher",
+        "volume",
+        "issue",
+        "pages",
+        "doi",
+        "url",
+        "access_date",
+        "abstract",
+        "citation_count",
+        "court",
+        "law_report",
+        "parties",
+        "section",
+    ]
 
     score_a = sum(1 for field in optional_fields if getattr(citation_a, field) is not None)
     score_b = sum(1 for field in optional_fields if getattr(citation_b, field) is not None)
@@ -485,10 +676,7 @@ def has_more_metadata(citation_a: Citation, citation_b: Citation) -> bool:
 
 
 def add_citations_batch(
-    db: CitationDatabase,
-    citations: List[Citation],
-    deduplicate: bool = True,
-    verbose: bool = False
+    db: CitationDatabase, citations: List[Citation], deduplicate: bool = True, verbose: bool = False
 ) -> int:
     """
     Add multiple citations to database in a single batch operation (V3 feature).
@@ -520,8 +708,7 @@ def add_citations_batch(
 
     # Also check for duplicates by content (author/year/title)
     existing_keys = {
-        (c.authors[0].lower() if c.authors else "", c.year, c.title.lower())
-        for c in db.citations
+        (c.authors[0].lower() if c.authors else "", c.year, c.title.lower()) for c in db.citations
     }
 
     truly_new = []
@@ -537,7 +724,9 @@ def add_citations_batch(
     db.citations.extend(truly_new)
 
     if verbose:
-        logger.info(f"Batch added {len(truly_new)} citations (skipped {len(citations) - len(truly_new)} duplicates)")
+        logger.info(
+            f"Batch added {len(truly_new)} citations (skipped {len(citations) - len(truly_new)} duplicates)"
+        )
 
     return len(truly_new)
 
@@ -576,11 +765,15 @@ def deduplicate_citations(citations: List[Citation], verbose: bool = False) -> L
             existing = dedup_map[key]
             if has_more_metadata(citation, existing):
                 if verbose:
-                    print(f"   Duplicate found: {citation.id} replaces {existing.id} (more metadata)")
+                    print(
+                        f"   Duplicate found: {citation.id} replaces {existing.id} (more metadata)"
+                    )
                 dedup_map[key] = citation
             else:
                 if verbose:
-                    print(f"   Duplicate found: {existing.id} kept over {citation.id} (more metadata)")
+                    print(
+                        f"   Duplicate found: {existing.id} kept over {citation.id} (more metadata)"
+                    )
         else:
             dedup_map[key] = citation
 

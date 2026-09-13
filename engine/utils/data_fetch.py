@@ -18,10 +18,9 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import requests
-
 from utils.retry import retry
 
 logger = logging.getLogger(__name__)
@@ -68,9 +67,11 @@ def _set_cache(cache_key: str, data: Dict[str, Any]) -> None:
     except Exception as e:
         logger.warning(f"Failed to cache: {e}")
 
+
 # Try to import pandas, but make it optional
 try:
     import pandas as pd
+
     HAS_PANDAS = True
 except ImportError:
     HAS_PANDAS = False
@@ -144,7 +145,9 @@ class DataFetcher:
             Dict with status, message, data, and file_path
         """
         # Check cache first
-        cache_key = _get_cache_key("worldbank", indicator, countries=countries, start=start_year, end=end_year)
+        cache_key = _get_cache_key(
+            "worldbank", indicator, countries=countries, start=start_year, end=end_year
+        )
         if self.use_cache:
             cached = _get_cached(cache_key)
             if cached and cached.get("status") == "success":
@@ -154,6 +157,7 @@ class DataFetcher:
                 filepath = self.workspace_dir / filename
                 if cached.get("data") and HAS_PANDAS:
                     import pandas as pd
+
                     pd.DataFrame(cached["data"]).to_csv(filepath, index=False)
                     cached["file_path"] = str(filepath)
                 return cached
@@ -179,16 +183,23 @@ class DataFetcher:
             records = data[1]
 
             # Parse records
-            parsed = [{
-                "country": r["country"]["value"],
-                "country_code": r["countryiso3code"],
-                "year": r["date"],
-                "value": r["value"],
-                "indicator": r["indicator"]["value"],
-            } for r in records if r.get("value") is not None]
+            parsed = [
+                {
+                    "country": r["country"]["value"],
+                    "country_code": r["countryiso3code"],
+                    "year": r["date"],
+                    "value": r["value"],
+                    "indicator": r["indicator"]["value"],
+                }
+                for r in records
+                if r.get("value") is not None
+            ]
 
             if not parsed:
-                return {"status": "error", "message": f"No non-null data found for indicator {indicator}"}
+                return {
+                    "status": "error",
+                    "message": f"No non-null data found for indicator {indicator}",
+                }
 
             # Save to workspace
             filename = f"worldbank_{indicator.replace('.', '_')}.csv"
@@ -197,17 +208,18 @@ class DataFetcher:
             if HAS_PANDAS:
                 df = pd.DataFrame(parsed)
                 df.to_csv(filepath, index=False)
-                countries_count = df['country'].nunique()
-                years_count = df['year'].nunique()
+                countries_count = df["country"].nunique()
+                years_count = df["year"].nunique()
             else:
                 # Fallback: write CSV manually
                 import csv
-                with open(filepath, 'w', newline='', encoding='utf-8') as f:
+
+                with open(filepath, "w", newline="", encoding="utf-8") as f:
                     writer = csv.DictWriter(f, fieldnames=parsed[0].keys())
                     writer.writeheader()
                     writer.writerows(parsed)
-                countries_count = len(set(r['country'] for r in parsed))
-                years_count = len(set(r['year'] for r in parsed))
+                countries_count = len(set(r["country"] for r in parsed))
+                years_count = len(set(r["year"] for r in parsed))
 
             result = {
                 "status": "success",
@@ -252,7 +264,7 @@ class DataFetcher:
                 return cached
 
         # Use the indicator search endpoint with query parameter
-        url = f"https://api.worldbank.org/v2/indicator"
+        url = "https://api.worldbank.org/v2/indicator"
         params = {"format": "json", "per_page": 500, "source": 2}  # WDI source
 
         try:
@@ -267,9 +279,11 @@ class DataFetcher:
             matches = [
                 {"code": ind["id"], "name": ind["name"]}
                 for ind in data[1]
-                if (query_lower in ind["name"].lower() or
-                    query_lower in ind.get("sourceNote", "").lower() or
-                    query_lower in ind["id"].lower())
+                if (
+                    query_lower in ind["name"].lower()
+                    or query_lower in ind.get("sourceNote", "").lower()
+                    or query_lower in ind["id"].lower()
+                )
             ]
 
             if not matches:
@@ -285,17 +299,29 @@ class DataFetcher:
                         {"code": "SP.POP.GROW", "name": "Population growth (annual %)"},
                     ],
                     "life expectancy": [
-                        {"code": "SP.DYN.LE00.IN", "name": "Life expectancy at birth, total (years)"},
+                        {
+                            "code": "SP.DYN.LE00.IN",
+                            "name": "Life expectancy at birth, total (years)",
+                        },
                     ],
                     "education": [
-                        {"code": "SE.XPD.TOTL.GD.ZS", "name": "Government expenditure on education (% of GDP)"},
-                        {"code": "SE.ADT.LITR.ZS", "name": "Literacy rate, adult total (% of people ages 15+)"},
+                        {
+                            "code": "SE.XPD.TOTL.GD.ZS",
+                            "name": "Government expenditure on education (% of GDP)",
+                        },
+                        {
+                            "code": "SE.ADT.LITR.ZS",
+                            "name": "Literacy rate, adult total (% of people ages 15+)",
+                        },
                     ],
                 }
                 matches = common_indicators.get(query_lower, [])
 
             if not matches:
-                return {"status": "error", "message": f"No indicators matching '{query}'. Try: gdp, population, education, life expectancy"}
+                return {
+                    "status": "error",
+                    "message": f"No indicators matching '{query}'. Try: gdp, population, education, life expectancy",
+                }
 
             result = {
                 "status": "success",
@@ -356,8 +382,8 @@ class DataFetcher:
                         rows = len(df)
                         columns = list(df.columns)[:5]
                     else:
-                        rows = response.text.count('\n')
-                        columns = response.text.split('\n')[0].split(',')[:5]
+                        rows = response.text.count("\n")
+                        columns = response.text.split("\n")[0].split(",")[:5]
 
                     result = {
                         "status": "success",
@@ -400,7 +426,9 @@ class DataFetcher:
             Dict with status, message, and data
         """
         # Check cache first
-        cache_key = _get_cache_key("eurostat", dataset_id, filters=filters, start=start_period, end=end_period)
+        cache_key = _get_cache_key(
+            "eurostat", dataset_id, filters=filters, start=start_period, end=end_period
+        )
         if self.use_cache:
             cached = _get_cached(cache_key)
             if cached:
@@ -438,7 +466,8 @@ class DataFetcher:
             else:
                 # df is a list of dicts
                 import csv
-                with open(filepath, 'w', newline='', encoding='utf-8') as f:
+
+                with open(filepath, "w", newline="", encoding="utf-8") as f:
                     writer = csv.DictWriter(f, fieldnames=df[0].keys())
                     writer.writeheader()
                     writer.writerows(df)
@@ -511,12 +540,7 @@ class DataFetcher:
 
 
 # Convenience function for CLI
-def fetch_data(
-    provider: str,
-    query: str,
-    workspace_dir: Path,
-    **kwargs
-) -> Dict[str, Any]:
+def fetch_data(provider: str, query: str, workspace_dir: Path, **kwargs) -> Dict[str, Any]:
     """
     Fetch data from a provider.
 

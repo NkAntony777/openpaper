@@ -41,10 +41,13 @@ def build_section_prompt(root, section: str) -> str:
     target = parse_target_max(raw_target)
 
     outline_files = _existing(root, OUTLINE_HINTS)
-    research_files = _existing(root, [
-        "research/combined_research.md",
-        "research/research_gaps.md",
-    ])
+    research_files = _existing(
+        root,
+        [
+            "research/combined_research.md",
+            "research/research_gaps.md",
+        ],
+    )
     has_papers_dir = (root / "research" / "papers").is_dir()
     has_bibliography = (root / "research" / "bibliography.json").exists()
     has_summary = (root / "drafts" / "citation_summary.md").exists()
@@ -54,7 +57,7 @@ def build_section_prompt(root, section: str) -> str:
         f"write the full section in one write_section call."
         if target
         else "- No word target found in checkpoint.json — match the depth implied by the outline "
-             "and the neighboring sections."
+        "and the neighboring sections."
     )
 
     material = [
@@ -72,18 +75,23 @@ def build_section_prompt(root, section: str) -> str:
         for rel in research_files:
             material.append(f"- `{rel}`.")
     if has_papers_dir:
-        material.append("- The per-paper notes `research/papers/*.md` covering this section's "
-                        "subtopics (list them with the `ls` tool, then read the relevant ones).")
+        material.append(
+            "- The per-paper notes `research/papers/*.md` covering this section's "
+            "subtopics (list them with the `ls` tool, then read the relevant ones)."
+        )
     if has_bibliography:
-        material.append("- The citation ledger `research/bibliography.json` — the ONLY source of "
-                        "citable ids.")
+        material.append(
+            "- The citation ledger `research/bibliography.json` — the ONLY source of citable ids."
+        )
     if has_summary:
         material.append("- `drafts/citation_summary.md` for a readable view of the ledger.")
 
     forbidden = []
     brief = ckpt.get("research_brief") or {}
     if isinstance(brief, dict):
-        forbidden = [str(c).strip() for c in (brief.get("forbidden_claims") or []) if str(c).strip()]
+        forbidden = [
+            str(c).strip() for c in (brief.get("forbidden_claims") or []) if str(c).strip()
+        ]
 
     lines = [
         f"Write the `{section}` section of an academic paper on: {topic}",
@@ -119,12 +127,14 @@ def build_section_prompt(root, section: str) -> str:
         "with any issues you could not resolve.",
     ]
     if forbidden:
-        lines.extend([
-            "",
-            "FORBIDDEN claims (must NOT appear anywhere in this section — the finish gate "
-            "scans for them):",
-            *[f"- {c}" for c in forbidden],
-        ])
+        lines.extend(
+            [
+                "",
+                "FORBIDDEN claims (must NOT appear anywhere in this section — the finish gate "
+                "scans for them):",
+                *[f"- {c}" for c in forbidden],
+            ]
+        )
     return "\n".join(lines) + "\n"
 
 

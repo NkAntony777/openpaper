@@ -4,9 +4,9 @@ ABOUTME: Autonomous deep research planner with seed reference expansion
 ABOUTME: Two-phase approach: planning (Gemini) → execution (orchestrator)
 """
 
-import re
 import json
 import logging
+import re
 from typing import Tuple
 
 
@@ -14,17 +14,20 @@ def _research_print(*args, **kwargs):
     """Print only if verbose research mode is enabled."""
     # Import at call time to get current value (not import-time snapshot)
     from .api_citations.orchestrator import _verbose_research
+
     if _verbose_research:
         print(*args, **kwargs)
+
 
 # Gemini finish_reason codes
 # 1 = STOP (normal), 2 = SAFETY, 3 = MAX_TOKENS, 4 = RECITATION
 SAFETY_BLOCKED = 2
 
+
 def safe_get_response_text(response) -> Tuple[str, bool]:
     """
     Safely extract text from Gemini response, handling safety blocks.
-    
+
     Returns:
         (text, was_blocked) - text content and whether safety filter triggered
     """
@@ -32,13 +35,13 @@ def safe_get_response_text(response) -> Tuple[str, bool]:
         # Check if response has candidates
         if not response.candidates:
             return "", True
-        
+
         candidate = response.candidates[0]
-        
+
         # Check finish_reason (2 = SAFETY block)
-        if hasattr(candidate, 'finish_reason') and candidate.finish_reason == SAFETY_BLOCKED:
+        if hasattr(candidate, "finish_reason") and candidate.finish_reason == SAFETY_BLOCKED:
             return "", True
-        
+
         # Try to get text
         return response.text.strip(), False
     except ValueError as e:
@@ -46,18 +49,23 @@ def safe_get_response_text(response) -> Tuple[str, bool]:
         if "finish_reason" in str(e):
             return "", True
         raise
+
+
 import os
-from typing import List, Dict, Any, Optional
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from typing import Any, Dict, List, Optional
 
 try:
     from google import genai
+
     from .gemini_client import GeminiModelWrapper
 except ImportError:
     genai = None
     GeminiModelWrapper = None
 
 from config import get_config
+
 from .openai_client import OpenAIModelWrapper
 
 logger = logging.getLogger(__name__)
@@ -86,7 +94,7 @@ class DeepResearchPlanner:
         gemini_model: Optional[Any] = None,
         api_key: Optional[str] = None,
         min_sources: int = 50,
-        verbose: bool = True
+        verbose: bool = True,
     ):
         """
         Initialize deep research planner.
@@ -116,11 +124,10 @@ class DeepResearchPlanner:
             else:
                 if not genai:
                     raise ImportError(
-                        "google-genai not installed. "
-                        "Run: pip install google-genai>=1.0.0"
+                        "google-genai not installed. Run: pip install google-genai>=1.0.0"
                     )
 
-                api_key = api_key or os.getenv('GOOGLE_API_KEY') or config.google_api_key
+                api_key = api_key or os.getenv("GOOGLE_API_KEY") or config.google_api_key
                 if not api_key:
                     raise ValueError(
                         "GOOGLE_API_KEY not found. Set via environment variable or constructor."
@@ -128,13 +135,10 @@ class DeepResearchPlanner:
 
                 client = genai.Client(api_key=api_key)
                 # Use Gemini 3 Flash Preview for fast research planning
-                self.model = GeminiModelWrapper(client, 'gemini-3-flash-preview')
+                self.model = GeminiModelWrapper(client, "gemini-3-flash-preview")
 
     def create_research_plan(
-        self,
-        topic: str,
-        scope: Optional[str] = None,
-        seed_references: Optional[List[str]] = None
+        self, topic: str, scope: Optional[str] = None, seed_references: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Create autonomous research plan with Gemini.
@@ -161,39 +165,17 @@ class DeepResearchPlanner:
             if scope:
                 _research_print(f"   Scope: {scope}")
 
-        # Build planning prompt
-        prompt = self._build_planning_prompt(topic, scope, seed_references)
-
         try:
             # Call Gemini for autonomous planning with safety filter retry and timeout
             max_retries = 3
             current_topic = topic
             plan_text = None
             planning_timeout = 120  # 2 minutes timeout for research plan generation
-            
-            # #region agent log
-            import json as json_lib
-            import time as time_lib
-            try:
-                debug_log_path = "/tmp/opendraft_debug.log"
-                with open(debug_log_path, "a") as f:
-                    f.write(json_lib.dumps({
-                        "timestamp": int(time_lib.time() * 1000),
-                        "location": "deep_research.py:create_research_plan",
-                        "message": "Starting research plan generation",
-                        "data": {"topic": topic[:100], "timeout": planning_timeout},
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "A"
-                    }) + "\n")
-            except Exception:
-                pass
-            # #endregion
-            
+
             for attempt in range(max_retries):
                 try:
                     # Wrap API call in timeout to prevent 504 Deadline Exceeded
-                    def _generate_with_timeout():
+                    def _generate_with_timeout(current_topic=current_topic):
                         return self.model.generate_content(
                             self._build_planning_prompt(current_topic, scope, seed_references),
                             generation_config={
@@ -202,93 +184,62 @@ class DeepResearchPlanner:
                                 "response_mime_type": "application/json",  # Structured JSON output
                             },
                         )
-                
+
                     # Execute with timeout wrapper
                     with ThreadPoolExecutor(max_workers=1) as executor:
                         future = executor.submit(_generate_with_timeout)
                         try:
                             response = future.result(timeout=planning_timeout)
                         except FuturesTimeoutError:
-                            logger.warning(f"Research plan generation timed out after {planning_timeout}s (attempt {attempt + 1}/{max_retries})")
-                            # #region agent log
-                            try:
-                                with open(debug_log_path, "a") as f:
-                                    f.write(json_lib.dumps({
-                                        "timestamp": int(time_lib.time() * 1000),
-                                        "location": "deep_research.py:create_research_plan",
-                                        "message": "Research plan generation timeout",
-                                        "data": {"attempt": attempt + 1, "timeout": planning_timeout},
-                                        "sessionId": "debug-session",
-                                        "runId": "run1",
-                                        "hypothesisId": "A"
-                                    }) + "\n")
-                            except Exception:
-                                pass
-                            # #endregion
+                            logger.warning(
+                                f"Research plan generation timed out after {planning_timeout}s (attempt {attempt + 1}/{max_retries})"
+                            )
                             if attempt < max_retries - 1:
                                 continue
                             else:
-                                raise TimeoutError(f"Research plan generation timed out after {planning_timeout}s after {max_retries} attempts")
-                    
+                                raise TimeoutError(
+                                    f"Research plan generation timed out after {planning_timeout}s after {max_retries} attempts"
+                                ) from None
+
                     # Safely extract response text
                     plan_text, was_blocked = safe_get_response_text(response)
-                    
+
                     if not was_blocked and plan_text:
-                        # #region agent log
-                        try:
-                            with open(debug_log_path, "a") as f:
-                                f.write(json_lib.dumps({
-                                    "timestamp": int(time_lib.time() * 1000),
-                                    "location": "deep_research.py:create_research_plan",
-                                    "message": "Research plan generated successfully",
-                                    "data": {"attempt": attempt + 1, "plan_length": len(plan_text)},
-                                    "sessionId": "debug-session",
-                                    "runId": "run1",
-                                    "hypothesisId": "A"
-                                }) + "\n")
-                        except Exception:
-                            pass
-                        # #endregion
                         break
-                    
+
                     # Safety filter triggered - try rephrasing topic
                     if attempt < max_retries - 1:
-                        logger.warning(f"Safety filter triggered for '{current_topic}', rephrasing (attempt {attempt + 1})")
+                        logger.warning(
+                            f"Safety filter triggered for '{current_topic}', rephrasing (attempt {attempt + 1})"
+                        )
                         current_topic = self._rephrase_topic_for_safety(topic)
                         if self.verbose:
-                            _research_print(f"   ⚠️ Safety filter triggered, retrying with: {current_topic}")
+                            _research_print(
+                                f"   ⚠️ Safety filter triggered, retrying with: {current_topic}"
+                            )
                 except TimeoutError:
                     # Re-raise timeout errors
                     raise
                 except Exception as e:
                     # Handle other exceptions (like DeadlineExceeded from gRPC)
                     if "DeadlineExceeded" in str(e) or "504" in str(e):
-                        logger.warning(f"Research plan generation deadline exceeded (attempt {attempt + 1}/{max_retries}): {e}")
-                        # #region agent log
-                        try:
-                            with open(debug_log_path, "a") as f:
-                                f.write(json_lib.dumps({
-                                    "timestamp": int(time_lib.time() * 1000),
-                                    "location": "deep_research.py:create_research_plan",
-                                    "message": "Deadline exceeded error",
-                                    "data": {"attempt": attempt + 1, "error": str(e)[:200]},
-                                    "sessionId": "debug-session",
-                                    "runId": "run1",
-                                    "hypothesisId": "A"
-                                }) + "\n")
-                        except Exception:
-                            pass
-                        # #endregion
+                        logger.warning(
+                            f"Research plan generation deadline exceeded (attempt {attempt + 1}/{max_retries}): {e}"
+                        )
                         if attempt < max_retries - 1:
                             continue
                         else:
-                            raise TimeoutError(f"Research plan generation failed after {max_retries} attempts: {e}")
+                            raise TimeoutError(
+                                f"Research plan generation failed after {max_retries} attempts: {e}"
+                            ) from e
                     else:
                         # Re-raise other exceptions
                         raise
-            
+
             if not plan_text:
-                raise ValueError(f"Unable to generate research plan after {max_retries} attempts (safety filter)")
+                raise ValueError(
+                    f"Unable to generate research plan after {max_retries} attempts (safety filter)"
+                )
 
             # Parse JSON response (structured output should return valid JSON directly)
             try:
@@ -298,51 +249,17 @@ class DeepResearchPlanner:
                 plan = self._extract_json_from_response(plan_text)
 
             if self.verbose:
-                _research_print(f"   ✓ Plan created: {len(plan.get('queries', []))} research queries")
+                _research_print(
+                    f"   ✓ Plan created: {len(plan.get('queries', []))} research queries"
+                )
 
             return plan
 
         except (TimeoutError, FuturesTimeoutError) as e:
             logger.error(f"Research planning timed out: {e}")
-            # #region agent log
-            try:
-                import json as json_lib
-                import time as time_lib
-                debug_log_path = "/tmp/opendraft_debug.log"
-                with open(debug_log_path, "a") as f:
-                    f.write(json_lib.dumps({
-                        "timestamp": int(time_lib.time() * 1000),
-                        "location": "deep_research.py:create_research_plan",
-                        "message": "Research planning timeout - raising exception",
-                        "data": {"error": str(e)[:200]},
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "A"
-                    }) + "\n")
-            except Exception:
-                pass
-            # #endregion
             raise
         except Exception as e:
             logger.error(f"Research planning failed: {e}")
-            # #region agent log
-            try:
-                import json as json_lib
-                import time as time_lib
-                debug_log_path = "/tmp/opendraft_debug.log"
-                with open(debug_log_path, "a") as f:
-                    f.write(json_lib.dumps({
-                        "timestamp": int(time_lib.time() * 1000),
-                        "location": "deep_research.py:create_research_plan",
-                        "message": "Research planning failed",
-                        "data": {"error": str(e)[:200]},
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "A"
-                    }) + "\n")
-            except Exception:
-                pass
-            # #endregion
             raise
 
     def _extract_json_from_response(self, text: str) -> dict:
@@ -371,7 +288,7 @@ class DeepResearchPlanner:
             pass
 
         # Strategy 2: Extract from markdown code blocks
-        code_block_pattern = r'```(?:json)?\s*([\s\S]*?)```'
+        code_block_pattern = r"```(?:json)?\s*([\s\S]*?)```"
         matches = re.findall(code_block_pattern, text)
         for match in matches:
             try:
@@ -383,14 +300,14 @@ class DeepResearchPlanner:
         brace_depth = 0
         start_idx = None
         for i, char in enumerate(text):
-            if char == '{':
+            if char == "{":
                 if brace_depth == 0:
                     start_idx = i
                 brace_depth += 1
-            elif char == '}':
+            elif char == "}":
                 brace_depth -= 1
                 if brace_depth == 0 and start_idx is not None:
-                    json_str = text[start_idx:i+1]
+                    json_str = text[start_idx : i + 1]
                     try:
                         return json.loads(json_str)
                     except json.JSONDecodeError:
@@ -402,15 +319,15 @@ class DeepResearchPlanner:
                             continue
 
         # Strategy 4: Last resort - try with repairs on full text
-        cleaned = re.sub(r'```(?:json)?', '', text)
-        cleaned = cleaned.replace('```', '').strip()
+        cleaned = re.sub(r"```(?:json)?", "", text)
+        cleaned = cleaned.replace("```", "").strip()
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError:
             pass
 
         # Strategy 5: Generate fallback structure from text
-        logger.warning(f"Could not parse JSON, attempting to extract queries from text")
+        logger.warning("Could not parse JSON, attempting to extract queries from text")
         fallback = self._generate_fallback_from_text(text)
         if fallback:
             return fallback
@@ -418,7 +335,7 @@ class DeepResearchPlanner:
         raise json.JSONDecodeError(
             f"Could not extract valid JSON from response (length: {len(text)} chars)",
             text[:500] if len(text) > 500 else text,
-            0
+            0,
         )
 
     def _generate_fallback_from_text(self, text: str) -> Optional[dict]:
@@ -439,16 +356,16 @@ class DeepResearchPlanner:
         queries = []
 
         # Look for numbered items
-        numbered_pattern = r'^\s*\d+[\.\)]\s*(.+)$'
+        numbered_pattern = r"^\s*\d+[\.\)]\s*(.+)$"
         for match in re.finditer(numbered_pattern, text, re.MULTILINE):
-            query = match.group(1).strip().strip('"\'')
+            query = match.group(1).strip().strip("\"'")
             if 5 < len(query) < 200:
                 queries.append(query)
 
         # Look for bullet points
-        bullet_pattern = r'^\s*[-*•]\s*(.+)$'
+        bullet_pattern = r"^\s*[-*•]\s*(.+)$"
         for match in re.finditer(bullet_pattern, text, re.MULTILINE):
-            query = match.group(1).strip().strip('"\'')
+            query = match.group(1).strip().strip("\"'")
             if 5 < len(query) < 200 and query not in queries:
                 queries.append(query)
 
@@ -464,7 +381,7 @@ class DeepResearchPlanner:
             return {
                 "queries": queries[:100],
                 "strategy": "Fallback strategy generated from text response",
-                "outline": "Section headings to be determined from research results"
+                "outline": "Section headings to be determined from research results",
             }
 
         return None
@@ -480,22 +397,19 @@ class DeepResearchPlanner:
             Repaired JSON string
         """
         # Fix trailing commas in arrays/objects
-        repaired = re.sub(r',\s*([}\]])', r'\1', json_str)
+        repaired = re.sub(r",\s*([}\]])", r"\1", json_str)
 
         # Fix missing commas between array elements (common with multi-line)
         repaired = re.sub(r'"\s*\n\s*"', '",\n"', repaired)
 
         # Fix unquoted keys (simple cases)
-        repaired = re.sub(r'{\s*(\w+)\s*:', r'{"\1":', repaired)
-        repaired = re.sub(r',\s*(\w+)\s*:', r',"\1":', repaired)
+        repaired = re.sub(r"{\s*(\w+)\s*:", r'{"\1":', repaired)
+        repaired = re.sub(r",\s*(\w+)\s*:", r',"\1":', repaired)
 
         return repaired
 
     def _build_planning_prompt(
-        self,
-        topic: str,
-        scope: Optional[str],
-        seed_references: Optional[List[str]]
+        self, topic: str, scope: Optional[str], seed_references: Optional[List[str]]
     ) -> str:
         """Build planning prompt for Gemini."""
 
@@ -563,18 +477,17 @@ Return ONLY valid JSON, no markdown blocks or explanations.
 
         return prompt
 
-
     def _rephrase_topic_for_safety(self, topic: str) -> str:
         """
         Rephrase topic to avoid triggering safety filters.
-        
+
         When Gemini safety filter blocks a topic, this method attempts to
         rephrase it in a more neutral, academic way that is less likely
         to trigger content filters.
-        
+
         Args:
             topic: Original research topic
-            
+
         Returns:
             Rephrased topic string
         """
@@ -588,18 +501,23 @@ Return ONLY valid JSON, no markdown blocks or explanations.
             (r"\b(drug|drugs)\b", "pharmaceutical"),
             (r"\b(terror|terrorism|terrorist)\b", "security threat"),
         ]
-        
+
         rephrased = topic
         for pattern, replacement in replacements:
             rephrased = re.sub(pattern, replacement, rephrased, flags=re.IGNORECASE)
-        
+
         # Add academic framing if not already present
-        academic_prefixes = ["systematic review of", "academic analysis of", "literature review on", "empirical study of"]
+        academic_prefixes = [
+            "systematic review of",
+            "academic analysis of",
+            "literature review on",
+            "empirical study of",
+        ]
         has_prefix = any(rephrased.lower().startswith(p) for p in academic_prefixes)
-        
+
         if not has_prefix:
             rephrased = f"Academic literature review on {rephrased}"
-        
+
         return rephrased
 
     def estimate_coverage(self, queries: List[str]) -> int:
@@ -619,7 +537,7 @@ Return ONLY valid JSON, no markdown blocks or explanations.
         """
         estimate = 0
         for query in queries:
-            if 'author:' in query or 'title:' in query:
+            if "author:" in query or "title:" in query:
                 estimate += 1.5  # Specific queries
             elif len(query.split()) <= 3:
                 estimate += 3  # Topic queries
@@ -639,12 +557,12 @@ Return ONLY valid JSON, no markdown blocks or explanations.
             True if plan is valid, False otherwise
         """
         # Check required keys
-        if not all(k in plan for k in ['queries', 'outline', 'strategy']):
+        if not all(k in plan for k in ["queries", "outline", "strategy"]):
             logger.warning("Plan missing required keys")
             return False
 
         # Check query count
-        queries = plan.get('queries', [])
+        queries = plan.get("queries", [])
         if len(queries) < 10:
             logger.warning(f"Too few queries: {len(queries)} < 10")
             return False
@@ -652,18 +570,12 @@ Return ONLY valid JSON, no markdown blocks or explanations.
         # Estimate coverage
         estimated = self.estimate_coverage(queries)
         if estimated < self.min_sources * 0.7:  # 70% of target
-            logger.warning(
-                f"Estimated coverage too low: {estimated} < {self.min_sources * 0.7}"
-            )
+            logger.warning(f"Estimated coverage too low: {estimated} < {self.min_sources * 0.7}")
             return False
 
         return True
 
-    def refine_plan(
-        self,
-        plan: Dict[str, Any],
-        feedback: str
-    ) -> Dict[str, Any]:
+    def refine_plan(self, plan: Dict[str, Any], feedback: str) -> Dict[str, Any]:
         """
         Refine research plan based on feedback.
 
@@ -675,7 +587,7 @@ Return ONLY valid JSON, no markdown blocks or explanations.
             Refined research plan
         """
         if self.verbose:
-            _research_print(f"\n🔄 Refining research plan...")
+            _research_print("\n🔄 Refining research plan...")
 
         prompt = f"""You are refining a research plan based on feedback.
 
@@ -705,7 +617,9 @@ Return ONLY valid JSON, no markdown blocks.
             refined_plan = json.loads(plan_text)
 
             if self.verbose:
-                _research_print(f"   ✓ Plan refined: {len(refined_plan.get('queries', []))} queries")
+                _research_print(
+                    f"   ✓ Plan refined: {len(refined_plan.get('queries', []))} queries"
+                )
 
             return refined_plan
 

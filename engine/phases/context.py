@@ -6,9 +6,9 @@ ABOUTME: Each phase reads inputs from ctx and writes outputs back to ctx
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from research_brief import ResearchBrief, SectionSpec, BaselineSpec, AblationSpec
+from research_brief import AblationSpec, BaselineSpec, ResearchBrief, SectionSpec
 
 
 @dataclass
@@ -42,9 +42,8 @@ class DraftContext:
     venue_target: Optional[str] = None
 
     # Agent-friendly execution modes
-    headless: bool = False   # suppress all human-oriented prints
-    dry_run: bool = False    # plan only: no LLM calls, no file writes
-
+    headless: bool = False  # suppress all human-oriented prints
+    dry_run: bool = False  # plan only: no LLM calls, no file writes
 
     # Academic metadata (optional, for cover page)
     author_name: Optional[str] = None

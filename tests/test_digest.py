@@ -3,12 +3,12 @@
 
 import os
 import sys
+from unittest.mock import Mock, patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
 
 # Add engine to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'engine'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "engine"))
 
 
 class TestElevenLabsClient:
@@ -73,11 +73,11 @@ class TestDigestGeneration:
         If you're in a safety-critical job, your gut feeling about being "fine"
         is probably wrong. Get more sleep... your coworkers are counting on it."""
 
-        with patch('digest.GeminiModelWrapper') as MockModel:
+        with patch("digest.GeminiModelWrapper") as MockModel:
             mock_instance = MockModel.return_value
             mock_instance.generate_content.return_value = mock_response
 
-            with patch('google.genai'):
+            with patch("google.genai"):
                 script, metadata = generate_script(doc)
 
         assert "sleep" in script.lower()
@@ -164,15 +164,15 @@ class TestDigestOutput:
         mock_response = Mock()
         mock_response.text = "This is a test digest script about research findings and their implications for the field."
 
-        with patch('digest.GeminiModelWrapper') as MockModel:
+        with patch("digest.GeminiModelWrapper") as MockModel:
             mock_instance = MockModel.return_value
             mock_instance.generate_content.return_value = mock_response
 
-            with patch('google.genai'):
+            with patch("google.genai"):
                 result = generate_digest(
                     doc,
                     output_dir=output_dir,
-                    generate_audio=False  # Skip audio for unit test
+                    generate_audio=False,  # Skip audio for unit test
                 )
 
         assert "script" in result

@@ -15,7 +15,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
-from agent_tools import artifacts, claims, compile_export, literature, registry, revise, score, write_section
+from agent_tools import (
+    artifacts,
+    claims,
+    compile_export,
+    literature,
+    registry,
+    revise,
+    score,
+    write_section,
+)
 from agent_tools.common import write_checkpoint
 from utils.citation_database import (
     Citation,
@@ -37,7 +46,11 @@ def make_citation(title, citation_id="", year=2020, authors=None, url=None):
 
 
 def make_checkpoint(root: Path, **extra):
-    data = {"topic": "Test Topic", "academic_level": "research_paper", "word_targets": {}}
+    data = {
+        "topic": "Test Topic",
+        "academic_level": "research_paper",
+        "word_targets": {},
+    }
     data.update(extra)
     write_checkpoint(root, data)
     return data
@@ -194,7 +207,8 @@ class TestWriteSection:
 
     def test_custom_section_slug_validation(self, tmp_path):
         bad = write_section.run(
-            {"section": "custom", "slug": "Bad Slug!", "content": section_content(50)}, tmp_path
+            {"section": "custom", "slug": "Bad Slug!", "content": section_content(50)},
+            tmp_path,
         )
         assert bad["ok"] is False
         assert "slug" in bad["error"]
@@ -203,7 +217,11 @@ class TestWriteSection:
 
     def test_custom_section_written_to_custom_dir(self, tmp_path):
         result = write_section.run(
-            {"section": "custom", "slug": "related_work", "content": section_content(50)},
+            {
+                "section": "custom",
+                "slug": "related_work",
+                "content": section_content(50),
+            },
             tmp_path,
         )
         assert result["ok"] is True
@@ -224,7 +242,11 @@ class TestWriteSection:
         save_citation_database(bib, tmp_path / "research" / "bibliography.json")
         content = section_content(50, cite="cite_001")
         result = write_section.run(
-            {"section": "conclusion", "content": content, "citations_used": ["cite_999"]},
+            {
+                "section": "conclusion",
+                "content": content,
+                "citations_used": ["cite_999"],
+            },
             tmp_path,
         )
         assert result["ok"] is True
@@ -259,7 +281,9 @@ class TestScoreDraft:
 
     def test_section_healthy_passes(self, tmp_path):
         (tmp_path / "drafts").mkdir()
-        (tmp_path / "drafts" / "03_conclusion.md").write_text(section_content(100), encoding="utf-8")
+        (tmp_path / "drafts" / "03_conclusion.md").write_text(
+            section_content(100), encoding="utf-8"
+        )
         result = score.run({"scope": "section", "section": "conclusion"}, tmp_path)
         assert result["data"]["passed"] is True
         assert result["data"]["issues"] == []
@@ -281,7 +305,12 @@ class TestScoreDraft:
         d = result["data"]
         assert d["scope"] == "full"
         assert isinstance(d["total"], int)
-        assert set(d["breakdown"]) == {"word_count", "citations", "completeness", "structure"}
+        assert set(d["breakdown"]) == {
+            "word_count",
+            "citations",
+            "completeness",
+            "structure",
+        }
         for issue in d["issues"]:
             assert {"section", "metric", "severity"} <= set(issue)
 
@@ -297,8 +326,14 @@ class TestScoreDraft:
 
 
 class TestSearchLiterature:
-    def _run_with_mocks(self, tmp_path, run_args=None, found=None,
-                        research_side_effect=None, probe_error=None):
+    def _run_with_mocks(
+        self,
+        tmp_path,
+        run_args=None,
+        found=None,
+        research_side_effect=None,
+        probe_error=None,
+    ):
         researcher = mock.MagicMock()
         if research_side_effect is not None:
             researcher.research_citation.side_effect = research_side_effect
@@ -306,8 +341,10 @@ class TestSearchLiterature:
             researcher.research_citation.return_value = found or []
         args = {"query": "transformer networks"}
         args.update(run_args or {})
-        with mock.patch.object(literature, "_probe_network", return_value=probe_error), \
-             mock.patch.object(literature, "CitationResearcher", return_value=researcher):
+        with (
+            mock.patch.object(literature, "_probe_network", return_value=probe_error),
+            mock.patch.object(literature, "CitationResearcher", return_value=researcher),
+        ):
             result = literature.run(args, tmp_path)
         return result, researcher
 
@@ -353,6 +390,7 @@ class TestSearchLiterature:
 
     def test_network_error_is_retryable(self, tmp_path):
         import requests
+
         result, _ = self._run_with_mocks(
             tmp_path, research_side_effect=requests.ConnectionError("boom")
         )
@@ -396,12 +434,17 @@ class TestVerifyClaims:
         fake_verifier.verify_claims.return_value = verdicts
         config = mock.MagicMock()
         config.google_api_key = "fake-key"
-        with mock.patch("config.get_config", return_value=config), \
-             mock.patch.object(claims, "_probe_network", return_value=None), \
-             mock.patch("utils.agent_runner.setup_model", return_value=mock.MagicMock()), \
-             mock.patch("utils.factcheck_verifier.FactCheckVerifier", return_value=fake_verifier):
+        with (
+            mock.patch("config.get_config", return_value=config),
+            mock.patch.object(claims, "_probe_network", return_value=None),
+            mock.patch("utils.llm_runtime.setup_model", return_value=mock.MagicMock()),
+            mock.patch("utils.factcheck_verifier.FactCheckVerifier", return_value=fake_verifier),
+        ):
             result = claims.run(
-                {"claims": [{"claim": "the sky is blue", "section": "intro"}], "max_workers": 3},
+                {
+                    "claims": [{"claim": "the sky is blue", "section": "intro"}],
+                    "max_workers": 3,
+                },
                 tmp_path,
             )
         return result, fake_verifier
@@ -432,21 +475,26 @@ class TestVerifyClaims:
         assert kwargs["max_workers"] == 3
 
     def test_contradicted_emits_find_replace_for_t4_t6(self, tmp_path):
-        verdicts = [{
-            "claim": "The model reaches 90% accuracy",
-            "verdict": "CONTRADICTED",
-            "confidence": 0.9,
-            "wrong_part": "90%",
-            "correct_value": "72%",
-            "evidence_snippet": "reported 72%",
-            "source_url": "http://x.example",
-        }]
+        verdicts = [
+            {
+                "claim": "The model reaches 90% accuracy",
+                "verdict": "CONTRADICTED",
+                "confidence": 0.9,
+                "wrong_part": "90%",
+                "correct_value": "72%",
+                "evidence_snippet": "reported 72%",
+                "source_url": "http://x.example",
+            }
+        ]
         result, _ = self._run_ok(tmp_path, verdicts)
         assert result["ok"] is True
-        assert result["data"]["find_replace"] == [{
-            "find": "90%", "replace": "72%",
-            "claim": "The model reaches 90% accuracy",
-        }]
+        assert result["data"]["find_replace"] == [
+            {
+                "find": "90%",
+                "replace": "72%",
+                "claim": "The model reaches 90% accuracy",
+            }
+        ]
 
     def test_missing_api_key_not_retryable(self, tmp_path, monkeypatch):
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
@@ -462,8 +510,10 @@ class TestVerifyClaims:
     def test_network_failure_is_retryable(self, tmp_path):
         config = mock.MagicMock()
         config.google_api_key = "fake-key"
-        with mock.patch("config.get_config", return_value=config), \
-             mock.patch.object(claims, "_probe_network", return_value="network unreachable"):
+        with (
+            mock.patch("config.get_config", return_value=config),
+            mock.patch.object(claims, "_probe_network", return_value="network unreachable"),
+        ):
             result = claims.run({"claims": [{"claim": "x"}]}, tmp_path)
         assert result["ok"] is False
         assert result["is_retryable"] is True
@@ -477,9 +527,7 @@ class TestReviseSection:
         (tmp_path / self.INTRO).write_text(text, encoding="utf-8")
 
     def test_missing_file_fails(self, tmp_path):
-        result = revise.run(
-            {"section": "introduction", "instructions": "improve"}, tmp_path
-        )
+        result = revise.run({"section": "introduction", "instructions": "improve"}, tmp_path)
         assert result["ok"] is False
         assert "has no file yet" in result["error"]
         assert result["is_retryable"] is False
@@ -535,7 +583,9 @@ class TestReviseSection:
         original = section_content(50)
         self._write_intro(tmp_path, original)
         with mock.patch.object(
-            revise, "call_gemini_revise", return_value=section_content(50) + " TODO refine"
+            revise,
+            "call_gemini_revise",
+            return_value=section_content(50) + " TODO refine",
         ):
             result = revise.run(
                 {"section": "introduction", "instructions": "polish"},
@@ -550,9 +600,7 @@ class TestReviseSection:
         with mock.patch.object(
             revise, "call_gemini_revise", side_effect=RuntimeError("429 rate limit")
         ):
-            result = revise.run(
-                {"section": "introduction", "instructions": "polish"}, tmp_path
-            )
+            result = revise.run({"section": "introduction", "instructions": "polish"}, tmp_path)
         assert result["ok"] is False
         assert result["is_retryable"] is True
 
@@ -603,12 +651,14 @@ class TestCompileDraft:
         return str(pdf), str(docx)
 
     def _run(self, tmp_path, fmt="all", export_impl=None):
-        with mock.patch("config.get_config", return_value=mock.MagicMock()), \
-             mock.patch("utils.agent_runner.setup_model", return_value=mock.MagicMock()), \
-             mock.patch(
-                 "phases.compile.run_compile_and_export",
-                 side_effect=export_impl or self._fake_export,
-             ) as run_compile:
+        with (
+            mock.patch("config.get_config", return_value=mock.MagicMock()),
+            mock.patch("utils.llm_runtime.setup_model", return_value=mock.MagicMock()),
+            mock.patch(
+                "phases.compile.run_compile_and_export",
+                side_effect=export_impl or self._fake_export,
+            ) as run_compile,
+        ):
             result = compile_export.run({"format": fmt}, tmp_path)
         return result, run_compile
 
@@ -672,6 +722,7 @@ class TestCliEnvelope:
 
     def _run_cli(self, capsys, argv):
         from opendraft.cli import run_tool_command
+
         code = run_tool_command(argv)
         out = capsys.readouterr().out
         lines = out.strip().splitlines()
@@ -719,11 +770,18 @@ class TestCliEnvelope:
     def test_tool_crash_becomes_envelope(self, capsys, tmp_path):
         """Unexpected exceptions inside a tool are converted, not propagated."""
         from agent_tools import registry
+
         spec = registry.get_tool("read_artifact")
         with mock.patch.object(spec, "func", side_effect=RuntimeError("unexpected boom")):
             code, payload = self._run_cli(
                 capsys,
-                ["read_artifact", "--root", str(tmp_path), "--args", '{"path": "x.md"}'],
+                [
+                    "read_artifact",
+                    "--root",
+                    str(tmp_path),
+                    "--args",
+                    '{"path": "x.md"}',
+                ],
             )
         assert code == 1
         assert payload["ok"] is False
@@ -743,7 +801,8 @@ class TestStatusLedger:
         self._bib(tmp_path)
         content = section_content(200, cite="cite_001")
         result = write_section.run(
-            {"section": "introduction", "content": content, "summary": "Claims X."}, tmp_path
+            {"section": "introduction", "content": content, "summary": "Claims X."},
+            tmp_path,
         )
         assert result["ok"] is True
         ledger = result["data"]["status_ledger"]
@@ -839,8 +898,12 @@ class TestStatusLedger:
 
     def test_custom_section_skips_status_ledger(self, tmp_path):
         result = write_section.run(
-            {"section": "custom", "slug": "extra_bits", "content": section_content(50),
-             "summary": "Extra material."},
+            {
+                "section": "custom",
+                "slug": "extra_bits",
+                "content": section_content(50),
+                "summary": "Extra material.",
+            },
             tmp_path,
         )
         assert result["ok"] is True
@@ -856,19 +919,28 @@ class TestSectionSummaryLedger:
     def test_summary_written_to_ledger(self, tmp_path):
         make_checkpoint(tmp_path, word_targets={})
         result = write_section.run(
-            {"section": "literature_review", "content": section_content(100),
-             "summary": "Reviews prior work on X; key terms: a, b."},
+            {
+                "section": "literature_review",
+                "content": section_content(100),
+                "summary": "Reviews prior work on X; key terms: a, b.",
+            },
             tmp_path,
         )
         assert result["ok"] is True
         rel = result["data"]["summary_ledger"]
         assert rel == "drafts/.ledger/literature_review.summary.md"
-        assert (tmp_path / rel).read_text(encoding="utf-8") == "Reviews prior work on X; key terms: a, b."
+        assert (tmp_path / rel).read_text(
+            encoding="utf-8"
+        ) == "Reviews prior work on X; key terms: a, b."
 
     def test_overlong_summary_truncated_with_warning(self, tmp_path):
         make_checkpoint(tmp_path, word_targets={})
         result = write_section.run(
-            {"section": "conclusion", "content": section_content(50), "summary": "x" * 700},
+            {
+                "section": "conclusion",
+                "content": section_content(50),
+                "summary": "x" * 700,
+            },
             tmp_path,
         )
         assert result["ok"] is True

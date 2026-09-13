@@ -1,4 +1,9 @@
-import json, shutil, subprocess, sys, tempfile, time
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -13,20 +18,31 @@ shutil.copytree(FIXTURE, scratch / "out")
 root = scratch / "out"
 print("PoC root:", root, flush=True)
 
-cmd = [str(PY), "-c",
-       "import sys; sys.path.insert(0, r'%s'); from opendraft.cli import run_harness_command; "
-       "sys.exit(run_harness_command(['section', '--root', r'%s', '--section', 'literature_review', "
-       "'--max-cost', '1.5', '--max-turns', '30']))" % (REPO / "engine", root)]
+cmd = [
+    str(PY),
+    "-c",
+    "import sys; sys.path.insert(0, r'%s'); from opendraft.cli import run_harness_command; "
+    "sys.exit(run_harness_command(['section', '--root', r'%s', '--section', 'literature_review', "
+    "'--max-cost', '1.5', '--max-turns', '30']))" % (REPO / "engine", root),
+]
 t0 = time.time()
-r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                   timeout=1800, cwd=REPO)
+r = subprocess.run(
+    cmd,
+    capture_output=True,
+    text=True,
+    encoding="utf-8",
+    errors="replace",
+    timeout=1800,
+    cwd=REPO,
+)
 print("rc:", r.returncode, "elapsed:", round(time.time() - t0, 1), "s", flush=True)
 print("stderr tail:", r.stderr[-800:], flush=True)
 out_line = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "{}"
 try:
     env = json.loads(out_line)
 except json.JSONDecodeError:
-    print("non-JSON stdout tail:", r.stdout[-500:]); sys.exit(1)
+    print("non-JSON stdout tail:", r.stdout[-500:])
+    sys.exit(1)
 print("envelope:", json.dumps(env, ensure_ascii=False)[:600], flush=True)
 
 # ---- acceptance checks ----
@@ -34,22 +50,28 @@ sec = root / "drafts" / "02_1_literature_review.md"
 text = sec.read_text(encoding="utf-8") if sec.exists() else ""
 words = len(text.split())
 import re
+
 cites = sorted({f"cite_{n}" for n in re.findall(r"\{cite_(\d+)\}", text)})
 
 sys.path.insert(0, str(REPO / "engine"))
 from agent_tools.score import run as score_run
+
 sc = score_run({"scope": "section", "section": "literature_review"}, root)
 
 checks = {
     "section written (>=840 words)": words >= 840,
     "score_draft section passed": sc.get("ok") and sc["data"]["passed"],
     "citations used >= 8": len(cites) >= 8,
-    "no error issues": sc.get("ok") and not any(i["severity"] == "error" for i in sc["data"]["issues"]),
+    "no error issues": sc.get("ok")
+    and not any(i["severity"] == "error" for i in sc["data"]["issues"]),
     "driver ok": env.get("ok") is True,
 }
 for k, v in checks.items():
     print(("PASS " if v else "FAIL ") + k, flush=True)
-print(f"words={words} unique_cites={len(cites)} cost={env.get('data', {}).get('stats', {}).get('cost')}", flush=True)
+print(
+    f"words={words} unique_cites={len(cites)} cost={env.get('data', {}).get('stats', {}).get('cost')}",
+    flush=True,
+)
 
 journal = root / "run_journal.jsonl"
 if journal.exists():

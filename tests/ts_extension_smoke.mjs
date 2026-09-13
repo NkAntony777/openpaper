@@ -5,19 +5,36 @@
 // .cmd/.bat rejection, abort-before-start, the compile_draft TUI gate, and the
 // session_before_compact handler (default + extension-summary paths).
 //
-// Run: node tests/ts_extension_smoke.mjs   (from the repo root; Windows paths assumed)
+// Run: node tests/ts_extension_smoke.mjs   (from the repo root)
+// Env: PI_NODE_MODULES (pi-coding-agent install dir; default E:\npm-global\node_modules),
+//      OD_PY (python binary for envelope tests; default the repo venv),
+//      OD_TS_SCHEMA_DUMP (write each tool's TypeBox schema JSON there for the
+//      Python parity test).
 
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const PI_NM = "E:\\npm-global\\node_modules";
-const NESTED = join(PI_NM, "@earendil-works", "pi-coding-agent", "node_modules");
+// PI_NODE_MODULES: where @earendil-works/pi-coding-agent is installed
+// (global npm dir, or a scratch `npm install` dir in CI). Default: author box.
+const PI_NM = process.env.PI_NODE_MODULES || "E:\\npm-global\\node_modules";
+const PI_AGENT = join(PI_NM, "@earendil-works", "pi-coding-agent");
+// Dependency layout differs between global installs (nested under
+// pi-coding-agent/node_modules) and fresh `npm install` (hoisted to PI_NM).
+function resolvePkg(rel) {
+  const nested = join(PI_AGENT, "node_modules", rel);
+  const flat = join(PI_NM, rel);
+  return existsSync(nested) ? nested : flat;
+}
 
-const py = join(REPO, ".venv", "Scripts", "python.exe");
+// OD_PY: python binary spawned for envelope tests (defaults to the repo venv,
+// cross-platform).
+const py = process.env.OD_PY ||
+  [join(REPO, ".venv", "Scripts", "python.exe"), join(REPO, ".venv", "bin", "python")]
+    .find((p) => existsSync(p)) || "python";
 
 let passed = 0;
 let failed = 0;
@@ -29,11 +46,10 @@ function check(name, cond, extra = "") {
 // ---- sandbox with junctioned deps so the extension's bare imports resolve
 const box = mkdtempSync(join(tmpdir(), "od-ts-smoke-"));
 mkdirSync(join(box, "node_modules", "@earendil-works"), { recursive: true });
-symlinkSync(join(PI_NM, "@earendil-works", "pi-coding-agent"),
-  join(box, "node_modules", "@earendil-works", "pi-coding-agent"), "junction");
-symlinkSync(join(NESTED, "@earendil-works", "pi-ai"),
+symlinkSync(PI_AGENT, join(box, "node_modules", "@earendil-works", "pi-coding-agent"), "junction");
+symlinkSync(resolvePkg(join("@earendil-works", "pi-ai")),
   join(box, "node_modules", "@earendil-works", "pi-ai"), "junction");
-symlinkSync(join(NESTED, "typebox"), join(box, "node_modules", "typebox"), "junction");
+symlinkSync(resolvePkg("typebox"), join(box, "node_modules", "typebox"), "junction");
 cpSync(join(REPO, "engine", "harness", "assets", "opendraft-tools.ts"),
   join(box, "opendraft-tools.ts"));
 mkdirSync(join(box, "root"), { recursive: true });
@@ -58,6 +74,14 @@ for (const t of ["read_artifact", "write_section", "score_draft", "search_litera
 }
 check("session_before_compact handler registered", handlers.has("session_before_compact"));
 check("tool_call (compile gate) handler registered", handlers.has("tool_call"));
+
+// ---- schema dump for the Python-side parity test (tests/test_ts_extension.py).
+// TypeBox schemas are plain JSON Schema objects, so they stringify losslessly.
+if (process.env.OD_TS_SCHEMA_DUMP) {
+  const dump = {};
+  for (const [name, spec] of tools) dump[name] = spec.parameters;
+  writeFileSync(process.env.OD_TS_SCHEMA_DUMP, JSON.stringify(dump, null, 2));
+}
 
 // ---- env plumbing
 process.env.OPENDRAFT_ROOT = join(box, "root");

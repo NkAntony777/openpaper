@@ -142,20 +142,22 @@ def _rule_min_words(entries: List[Dict]) -> List[Dict]:
         if n < FIX_ROUNDS_THRESHOLD:
             continue
         specific = min_words_signals > 0
-        lessons.append({
-            "lesson": (
-                f"section {section}: first drafts ran short; aim for >=90% of the "
-                f"word target in the first write"
-                if specific else
-                f"section {section}: write_section was rejected {n}x; draft fuller, "
-                f"well-grounded first writes"
-            ),
-            "evidence": (
-                f"run_journal.jsonl: {n} write_section ERROR(s) for {section}; "
-                f"'min_words/too short' markers: {min_words_signals}"
-            ),
-            "confidence": 0.9 if specific else 0.6,
-        })
+        lessons.append(
+            {
+                "lesson": (
+                    f"section {section}: first drafts ran short; aim for >=90% of the "
+                    f"word target in the first write"
+                    if specific
+                    else f"section {section}: write_section was rejected {n}x; draft fuller, "
+                    f"well-grounded first writes"
+                ),
+                "evidence": (
+                    f"run_journal.jsonl: {n} write_section ERROR(s) for {section}; "
+                    f"'min_words/too short' markers: {min_words_signals}"
+                ),
+                "confidence": 0.9 if specific else 0.6,
+            }
+        )
     return lessons
 
 
@@ -176,12 +178,14 @@ def _rule_tool_unreliable(entries: List[Dict]) -> List[Dict]:
         if n < TOOL_FAILURE_STREAK:
             continue
         alt = TOOL_ALTERNATIVES.get(tool, "another tool or manual inspection")
-        lessons.append({
-            "lesson": f"tool {tool} was unreliable in this run; prefer alternative {alt}",
-            "evidence": f"run_journal.jsonl: {n} consecutive tool_execution_end ERROR "
-                        f"entries for {tool}",
-            "confidence": 0.8,
-        })
+        lessons.append(
+            {
+                "lesson": f"tool {tool} was unreliable in this run; prefer alternative {alt}",
+                "evidence": f"run_journal.jsonl: {n} consecutive tool_execution_end ERROR "
+                f"entries for {tool}",
+                "confidence": 0.8,
+            }
+        )
     return lessons
 
 
@@ -204,17 +208,19 @@ def _rule_metric_persists(entries: List[Dict], status: Dict) -> List[Dict]:
             continue
         for issue in entry.get("open_issues") or []:
             metric = _issue_metric(str(issue))
-            lessons.append({
-                "lesson": (
-                    f"metric {metric} persists for section {section}; expand evidence "
-                    f"with search_literature before rewriting"
-                ),
-                "evidence": (
-                    f"run_journal.jsonl: {calls} score_draft calls for {section}; "
-                    f"section_status.json still lists: {str(issue)[:120]}"
-                ),
-                "confidence": 0.75,
-            })
+            lessons.append(
+                {
+                    "lesson": (
+                        f"metric {metric} persists for section {section}; expand evidence "
+                        f"with search_literature before rewriting"
+                    ),
+                    "evidence": (
+                        f"run_journal.jsonl: {calls} score_draft calls for {section}; "
+                        f"section_status.json still lists: {str(issue)[:120]}"
+                    ),
+                    "confidence": 0.75,
+                }
+            )
     return lessons
 
 
@@ -233,13 +239,15 @@ def _rule_fix_rounds(entries: List[Dict]) -> List[Dict]:
     for section, n in sorted(rounds_by_section.items()):
         if n <= 1:
             continue
-        lessons.append({
-            "lesson": (
-                f"section {section} needed {n} fix rounds; consider richer initial context"
-            ),
-            "evidence": f"run_journal.jsonl: {n} 'session=fix-{section}' prompt entries",
-            "confidence": 0.85,
-        })
+        lessons.append(
+            {
+                "lesson": (
+                    f"section {section} needed {n} fix rounds; consider richer initial context"
+                ),
+                "evidence": f"run_journal.jsonl: {n} 'session=fix-{section}' prompt entries",
+                "confidence": 0.85,
+            }
+        )
     return lessons
 
 
@@ -299,15 +307,19 @@ def main(argv=None) -> int:
         prog="opendraft harness distill",
         description="Distill run_journal.jsonl + section_status.json into proposed lessons.",
     )
-    parser.add_argument("--root", type=Path, required=True,
-                        help="Paper output directory (the agent's working root)")
+    parser.add_argument(
+        "--root", type=Path, required=True, help="Paper output directory (the agent's working root)"
+    )
     args = parser.parse_args(argv)
 
     summary = distill(args.root)
-    payload = {"ok": True, "data": {
-        "proposed": summary["proposed"],
-        "lessons_path": summary["lessons_path"],
-    }}
+    payload = {
+        "ok": True,
+        "data": {
+            "proposed": summary["proposed"],
+            "lessons_path": summary["lessons_path"],
+        },
+    }
     print(json.dumps(payload, ensure_ascii=False))
     return 0
 

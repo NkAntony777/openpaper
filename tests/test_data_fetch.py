@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""
-Tests for data fetching module (World Bank, Eurostat, OWID).
-"""
+"""Tests for data fetching module (World Bank, Eurostat, OWID).
 
-import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+Offline tests run everywhere; tests marked `network` hit the live provider
+APIs and are deselected in CI (pytest.ini addopts) — run them locally with
+`pytest tests/test_data_fetch.py -m network`.
+"""
 
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import tempfile
+from pathlib import Path
 
-from utils.data_fetch import DataFetcher, fetch_data, SDMX_PROVIDERS
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
+
+from utils.data_fetch import SDMX_PROVIDERS, DataFetcher, fetch_data  # noqa: E402
 
 
 class TestDataFetcher:
@@ -21,7 +24,7 @@ class TestDataFetcher:
         """Test that workspace directory is created on init."""
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "new_workspace"
-            fetcher = DataFetcher(workspace)
+            _fetcher = DataFetcher(workspace)
             assert workspace.exists()
 
     def test_list_providers(self):
@@ -37,12 +40,13 @@ class TestDataFetcher:
         """Test SDMX_PROVIDERS has required fields."""
         required_fields = {"name", "url", "description"}
         for key, provider in SDMX_PROVIDERS.items():
-            assert all(field in provider for field in required_fields), \
+            assert all(field in provider for field in required_fields), (
                 f"Provider {key} missing required fields"
+            )
 
 
 class TestWorldBankSearch:
-    """Tests for World Bank search functionality."""
+    """Tests for World Bank search functionality (live API)."""
 
     @pytest.mark.network
     def test_search_gdp_returns_results(self):
@@ -55,6 +59,7 @@ class TestWorldBankSearch:
             assert "indicators" in result
             assert len(result["indicators"]) > 0
 
+    @pytest.mark.network
     def test_search_returns_code_and_name(self):
         """Test that search results have code and name."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -68,17 +73,15 @@ class TestWorldBankSearch:
 
 
 class TestWorldBankFetch:
-    """Tests for World Bank data fetching."""
+    """Tests for World Bank data fetching (live API)."""
 
+    @pytest.mark.network
     def test_fetch_gdp_single_country(self):
         """Test fetching GDP for a single country."""
         with tempfile.TemporaryDirectory() as tmpdir:
             fetcher = DataFetcher(Path(tmpdir), timeout=30)
             result = fetcher.fetch_worldbank(
-                "NY.GDP.MKTP.CD",
-                countries="USA",
-                start_year=2020,
-                end_year=2023
+                "NY.GDP.MKTP.CD", countries="USA", start_year=2020, end_year=2023
             )
 
             assert result["status"] == "success"
@@ -86,15 +89,12 @@ class TestWorldBankFetch:
             assert Path(result["file_path"]).exists()
             assert result["rows"] > 0
 
+    @pytest.mark.network
     def test_fetch_creates_csv(self):
         """Test that fetch creates a CSV file."""
         with tempfile.TemporaryDirectory() as tmpdir:
             fetcher = DataFetcher(Path(tmpdir), timeout=30)
-            result = fetcher.fetch_worldbank(
-                "SP.POP.TOTL",
-                countries="DEU",
-                start_year=2020
-            )
+            result = fetcher.fetch_worldbank("SP.POP.TOTL", countries="DEU", start_year=2020)
 
             if result["status"] == "success":
                 csv_path = Path(result["file_path"])
@@ -102,6 +102,7 @@ class TestWorldBankFetch:
                 content = csv_path.read_text()
                 assert "country" in content.lower()
 
+    @pytest.mark.network
     def test_fetch_invalid_indicator(self):
         """Test that invalid indicator returns error."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -112,8 +113,9 @@ class TestWorldBankFetch:
 
 
 class TestOWIDFetch:
-    """Tests for Our World in Data fetching."""
+    """Tests for Our World in Data fetching (live API)."""
 
+    @pytest.mark.network
     @pytest.mark.slow
     def test_fetch_covid_data(self):
         """Test fetching COVID data (large file, marked slow)."""
@@ -124,6 +126,7 @@ class TestOWIDFetch:
             assert result["status"] == "success"
             assert result["rows"] > 100000  # COVID data is large
 
+    @pytest.mark.network
     def test_fetch_invalid_dataset(self):
         """Test that invalid dataset returns helpful error."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -137,6 +140,7 @@ class TestOWIDFetch:
 class TestFetchDataConvenience:
     """Tests for fetch_data convenience function."""
 
+    @pytest.mark.network
     def test_fetch_data_worldbank(self):
         """Test convenience function with worldbank."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -145,10 +149,11 @@ class TestFetchDataConvenience:
                 "NY.GDP.MKTP.CD",
                 Path(tmpdir),
                 countries="USA",
-                start_year=2022
+                start_year=2022,
             )
             assert result["status"] == "success"
 
+    @pytest.mark.network
     def test_fetch_data_search(self):
         """Test convenience function with search."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -161,7 +166,3 @@ class TestFetchDataConvenience:
             result = fetch_data("unknown", "query", Path(tmpdir))
             assert result["status"] == "error"
             assert "Unknown provider" in result["message"]
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

@@ -3,8 +3,8 @@ ABOUTME: OpenAI-compatible client wrapper (works with OpenAI-format APIs)
 ABOUTME: Mirrors GeminiModelWrapper interface for OpenDraft pipeline
 """
 
-import os
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -36,6 +36,7 @@ def _strip_reasoning(text: str) -> str:
 @dataclass
 class UsageMetadata:
     """Mimics Gemini's usage_metadata structure."""
+
     prompt_token_count: int
     candidates_token_count: int
     total_token_count: int
@@ -44,6 +45,7 @@ class UsageMetadata:
 @dataclass
 class Part:
     """Mimics Gemini's Part structure."""
+
     text: str
     function_call: Optional[object] = None
 
@@ -51,6 +53,7 @@ class Part:
 @dataclass
 class Content:
     """Mimics Gemini's Content structure."""
+
     parts: list
 
     @classmethod
@@ -61,6 +64,7 @@ class Content:
 @dataclass
 class Candidate:
     """Mimics Gemini's Candidate structure."""
+
     content: Content
     finish_reason: str = "stop"
 
@@ -68,6 +72,7 @@ class Candidate:
 @dataclass
 class OpenAIResponse:
     """Mimics Gemini's response structure for compatibility."""
+
     text: str
     usage_metadata: UsageMetadata
     candidates: list = None
@@ -189,7 +194,9 @@ class OpenAIModelWrapper:
 
         usage = result.usage or {}
         prompt_tokens = getattr(usage, "prompt_tokens", 0) or usage.get("prompt_tokens", 0)
-        completion_tokens = getattr(usage, "completion_tokens", 0) or usage.get("completion_tokens", 0)
+        completion_tokens = getattr(usage, "completion_tokens", 0) or usage.get(
+            "completion_tokens", 0
+        )
         total_tokens = getattr(usage, "total_tokens", 0) or usage.get("total_tokens", 0)
 
         usage_metadata = UsageMetadata(

@@ -128,41 +128,27 @@ def check_thresholds(metrics: EvalMetrics, spec: Dict) -> List[str]:
     if "min_quality" in spec:
         floor = spec["min_quality"]
         if metrics.quality_score is None or metrics.quality_score < floor:
-            failures.append(
-                f"quality_score {metrics.quality_score} < min_quality {floor}"
-            )
+            failures.append(f"quality_score {metrics.quality_score} < min_quality {floor}")
     if spec.get("require_factcheck_clean") and not metrics.factcheck_clean:
         failures.append("factcheck_clean is False")
     if spec.get("require_factcheck_dirty") and metrics.factcheck_clean:
         failures.append("expected factcheck_clean False (dirty fixture)")
     if "min_citation_rate" in spec and metrics.citation_rate < spec["min_citation_rate"]:
-        failures.append(
-            f"citation_rate {metrics.citation_rate:.2f} < {spec['min_citation_rate']}"
-        )
+        failures.append(f"citation_rate {metrics.citation_rate:.2f} < {spec['min_citation_rate']}")
     if "max_citation_rate" in spec and metrics.citation_rate > spec["max_citation_rate"]:
-        failures.append(
-            f"citation_rate {metrics.citation_rate:.2f} > {spec['max_citation_rate']}"
-        )
+        failures.append(f"citation_rate {metrics.citation_rate:.2f} > {spec['max_citation_rate']}")
     if "max_forbidden_hits" in spec and metrics.forbidden_hits > spec["max_forbidden_hits"]:
-        failures.append(
-            f"forbidden_hits {metrics.forbidden_hits} > {spec['max_forbidden_hits']}"
-        )
+        failures.append(f"forbidden_hits {metrics.forbidden_hits} > {spec['max_forbidden_hits']}")
     if "min_forbidden_hits" in spec and metrics.forbidden_hits < spec["min_forbidden_hits"]:
-        failures.append(
-            f"forbidden_hits {metrics.forbidden_hits} < {spec['min_forbidden_hits']}"
-        )
+        failures.append(f"forbidden_hits {metrics.forbidden_hits} < {spec['min_forbidden_hits']}")
     if "max_cite_missing" in spec and metrics.cite_missing > spec["max_cite_missing"]:
-        failures.append(
-            f"cite_missing {metrics.cite_missing} > {spec['max_cite_missing']}"
-        )
+        failures.append(f"cite_missing {metrics.cite_missing} > {spec['max_cite_missing']}")
     if "expect_passed" in spec and bool(metrics.passed) != bool(spec["expect_passed"]):
         failures.append(f"passed={metrics.passed} expected {spec['expect_passed']}")
     if "max_fix_rounds" in spec and metrics.fix_rounds > spec["max_fix_rounds"]:
         failures.append(f"fix_rounds {metrics.fix_rounds} > {spec['max_fix_rounds']}")
     if "max_token_cost" in spec and metrics.token_cost > spec["max_token_cost"]:
-        failures.append(
-            f"token_cost {metrics.token_cost:.4f} > {spec['max_token_cost']}"
-        )
+        failures.append(f"token_cost {metrics.token_cost:.4f} > {spec['max_token_cost']}")
     return failures
 
 
@@ -200,10 +186,12 @@ def evaluate_gold_set(gold_dir) -> Dict:
         failures = check_thresholds(metrics, spec.get("gates") or spec)
         ok = not failures
         all_ok = all_ok and ok
-        results.append({
-            "id": fid,
-            "ok": ok,
-            "metrics": metrics.to_dict(),
-            "failures": failures,
-        })
+        results.append(
+            {
+                "id": fid,
+                "ok": ok,
+                "metrics": metrics.to_dict(),
+                "failures": failures,
+            }
+        )
     return {"ok": all_ok, "results": results, "n": len(results)}

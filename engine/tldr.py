@@ -8,19 +8,17 @@ Usage:
     python -m engine.tldr paper.pdf -o summary.md
 """
 
-import os
-import re
-import sys
 import argparse
 import logging
+import os
+import sys
 from pathlib import Path
-from typing import Optional
 
 # Add engine to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import get_config
-from utils.document_reader import read_document, get_document_info
+from utils.document_reader import get_document_info, read_document
 from utils.gemini_client import GeminiModelWrapper
 from utils.openai_client import OpenAIModelWrapper
 
@@ -63,7 +61,9 @@ def generate_tldr(
         try:
             from google import genai
         except ImportError:
-            raise ImportError("google-genai required. Install with: pip install google-genai")
+            raise ImportError(
+                "google-genai required. Install with: pip install google-genai"
+            ) from None
 
         api_key = config.google_api_key or os.environ.get("GOOGLE_API_KEY")
         if not api_key:
@@ -113,7 +113,6 @@ def _extract_tldr(output: str) -> str:
 
     result_lines = []
     in_context = False
-    in_findings = False
     bullets = []
 
     for line in lines:
@@ -122,10 +121,8 @@ def _extract_tldr(output: str) -> str:
         # Detect sections
         if "Research Context" in line_stripped or "**Authors**" in line_stripped:
             in_context = True
-            in_findings = False
         elif "Key Findings" in line_stripped or "Findings" in line_stripped:
             in_context = False
-            in_findings = True
 
         # Collect Research Context lines
         if in_context and line_stripped:
@@ -140,10 +137,10 @@ def _extract_tldr(output: str) -> str:
     output_parts = ["## TL;DR\n"]
 
     # Add Research Context if found
-    context_lines = [l for l in result_lines if l.startswith("**")]
+    context_lines = [line for line in result_lines if line.startswith("**")]
     if context_lines:
         output_parts.append("### Research Context\n")
-        output_parts.extend([l + "\n" for l in context_lines])
+        output_parts.extend([line + "\n" for line in context_lines])
         output_parts.append("\n### Key Findings\n")
 
     # Add bullets
@@ -157,15 +154,13 @@ def _extract_tldr(output: str) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generate 5-bullet TL;DR for any paper"
-    )
+    parser = argparse.ArgumentParser(description="Generate 5-bullet TL;DR for any paper")
     parser.add_argument("document", help="Path to document (PDF, MD, or TXT)")
     parser.add_argument("--output", "-o", help="Output file path")
     parser.add_argument(
         "--model",
         default="gemini-3-flash-preview",
-        help="Gemini model (default: gemini-3-flash-preview)"
+        help="Gemini model (default: gemini-3-flash-preview)",
     )
 
     args = parser.parse_args()

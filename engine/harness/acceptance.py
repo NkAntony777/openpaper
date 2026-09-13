@@ -23,8 +23,28 @@ FORBIDDEN_REPORT_REL = "qa_forbidden_claims.md"
 # Stopwords dropped before keyword-overlap matching so "we prove that X" doesn't
 # fire just because "we"/"that" appear in the draft.
 _STOP = {
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is",
-    "it", "of", "on", "or", "that", "the", "this", "to", "we", "with",
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "this",
+    "to",
+    "we",
+    "with",
 }
 
 # Sentences carrying these cues are refutations/negations ("we do not claim X",
@@ -82,9 +102,7 @@ def match_forbidden_claims(text: str, forbidden: List[str]) -> List[Dict]:
     Negated/refuting sentences are exempt — the gate must not punish a paper that
     explicitly refuses a forbidden claim."""
     sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(text or "") if s.strip()]
-    scan_target = "\n".join(
-        s for s in sentences if not _NEGATION_CUES.search(s)
-    )
+    scan_target = "\n".join(s for s in sentences if not _NEGATION_CUES.search(s))
     hits: List[Dict] = []
     draft_words = set(_keywords(scan_target))
     draft_l = scan_target.lower()
@@ -99,11 +117,13 @@ def match_forbidden_claims(text: str, forbidden: List[str]) -> List[Dict]:
         matched = [w for w in keys if w in draft_words]
         overlap = len(matched) / len(keys)
         if overlap >= FORBIDDEN_OVERLAP and len(matched) >= FORBIDDEN_MIN_HITS:
-            hits.append({
-                "claim": claim,
-                "overlap": round(overlap, 2),
-                "matched_words": matched,
-            })
+            hits.append(
+                {
+                    "claim": claim,
+                    "overlap": round(overlap, 2),
+                    "matched_words": matched,
+                }
+            )
     return hits
 
 
@@ -171,8 +191,11 @@ def planned_sections(root) -> List[str]:
     targets = ckpt.get("word_targets") or {}
     if not isinstance(targets, dict):
         return []
-    return [s for s in targets
-            if s in SECTION_FILES and word_target_max(root, SECTION_FILES[s]["wt_key"]) > 0]
+    return [
+        s
+        for s in targets
+        if s in SECTION_FILES and word_target_max(root, SECTION_FILES[s]["wt_key"]) > 0
+    ]
 
 
 def section_completeness(root) -> "tuple[List[str], List[Dict]]":
@@ -190,8 +213,7 @@ def section_completeness(root) -> "tuple[List[str], List[Dict]]":
         words = len(f.read_text(encoding="utf-8").split())
         floor = int(target * FLOOR_RATIO)
         if words < floor:
-            thin.append({"section": section, "words": words, "floor": floor,
-                         "target": target})
+            thin.append({"section": section, "words": words, "floor": floor, "target": target})
     return missing, thin
 
 
@@ -209,8 +231,10 @@ def run_finish_acceptance(
     root = Path(root)
     unresolved = unresolved_contradictions(root)
     claims_clean = len(unresolved) == 0
-    hits = scan_forbidden_claims(root) if write_forbidden_report else match_forbidden_claims(
-        _all_section_text(root), forbidden_claims_from_checkpoint(root)
+    hits = (
+        scan_forbidden_claims(root)
+        if write_forbidden_report
+        else match_forbidden_claims(_all_section_text(root), forbidden_claims_from_checkpoint(root))
     )
     cites = citation_authenticity(root)
     missing, thin = section_completeness(root)
@@ -235,9 +259,7 @@ def run_finish_acceptance(
             + "; ".join(h["claim"] for h in hits[:5])
         )
     if missing:
-        gaps.append(
-            f"{len(missing)} planned section(s) missing on disk: {', '.join(missing)}"
-        )
+        gaps.append(f"{len(missing)} planned section(s) missing on disk: {', '.join(missing)}")
     for t in thin[:5]:
         gaps.append(
             f"section {t['section']} below word floor: {t['words']} words "
@@ -255,9 +277,15 @@ def run_finish_acceptance(
     if quality_gap:
         gaps.append(quality_gap)
 
-    passed = (claims_clean and not hits and not missing and not thin
-              and cites["cite_missing"] == 0 and not cites["unknown"]
-              and quality_gap is None)
+    passed = (
+        claims_clean
+        and not hits
+        and not missing
+        and not thin
+        and cites["cite_missing"] == 0
+        and not cites["unknown"]
+        and quality_gap is None
+    )
     return FinishAcceptance(
         passed=passed,
         claims_clean=claims_clean,

@@ -17,20 +17,16 @@ Word Count Standards (typical ranges):
 - PhD Dissertation: 50,000-100,000 words, 100-300 citations
 """
 
-import pytest
+import sys
 from pathlib import Path
 
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
-from utils.quality_gate import (
-    score_draft_quality,
-    run_quality_gate,
-    _count_words,
-    _score_word_count,
-    _score_citations,
-)
 from phases.context import DraftContext
+from utils.quality_gate import (
+    _score_citations,
+    score_draft_quality,
+)
 
 
 class TestAcademicStandardsCalibration:
@@ -48,11 +44,11 @@ class TestAcademicStandardsCalibration:
         ctx = DraftContext()
         ctx.academic_level = academic_level
         ctx.word_targets = {
-            'research_paper': {'min_citations': 10},
-            'bachelor': {'min_citations': 20},
-            'master': {'min_citations': 40},
-            'phd': {'min_citations': 80},
-        }.get(academic_level, {'min_citations': 10})
+            "research_paper": {"min_citations": 10},
+            "bachelor": {"min_citations": 20},
+            "master": {"min_citations": 40},
+            "phd": {"min_citations": 80},
+        }.get(academic_level, {"min_citations": 10})
 
         # Generate text with exact word counts
         ctx.intro_output = "# Introduction\n\n" + "word " * intro_words
@@ -84,39 +80,43 @@ class TestAcademicStandardsCalibration:
         """Research paper meeting minimum requirements should pass."""
         ctx = self._create_context_with_word_counts(
             academic_level="research_paper",
-            intro_words=400,    # Min: 400
-            body_words=1500,    # Min: 1500
+            intro_words=400,  # Min: 400
+            body_words=1500,  # Min: 1500
             conclusion_words=300,  # Min: 300
             citation_count=10,  # Min: 10
         )
 
         result = score_draft_quality(ctx)
 
-        assert result.passed is True, f"Should pass with minimum standards. Score: {result.total_score}"
+        assert result.passed is True, (
+            f"Should pass with minimum standards. Score: {result.total_score}"
+        )
         assert result.word_count_score >= 20, "Word count should score well"
 
     def test_research_paper_excellent_exceeds_standards(self):
         """Research paper exceeding requirements should score high."""
         ctx = self._create_context_with_word_counts(
             academic_level="research_paper",
-            intro_words=800,    # 2x minimum
-            body_words=3000,    # 2x minimum
+            intro_words=800,  # 2x minimum
+            body_words=3000,  # 2x minimum
             conclusion_words=600,  # 2x minimum
             citation_count=20,  # 2x minimum
         )
 
         result = score_draft_quality(ctx)
 
-        assert result.total_score >= 70, f"Excellent paper should score 70+. Got: {result.total_score}"
+        assert result.total_score >= 70, (
+            f"Excellent paper should score 70+. Got: {result.total_score}"
+        )
 
     def test_research_paper_below_minimum_fails(self):
         """Research paper below requirements should not pass."""
         ctx = self._create_context_with_word_counts(
             academic_level="research_paper",
-            intro_words=100,    # Way below 400
-            body_words=500,     # Way below 1500
+            intro_words=100,  # Way below 400
+            body_words=500,  # Way below 1500
             conclusion_words=50,  # Way below 300
-            citation_count=3,   # Way below 10
+            citation_count=3,  # Way below 10
         )
 
         result = score_draft_quality(ctx)
@@ -132,8 +132,8 @@ class TestAcademicStandardsCalibration:
         """Bachelor thesis meeting minimum requirements should pass."""
         ctx = self._create_context_with_word_counts(
             academic_level="bachelor",
-            intro_words=1000,   # Min: 1000
-            body_words=5000,    # Min: 5000
+            intro_words=1000,  # Min: 1000
+            body_words=5000,  # Min: 5000
             conclusion_words=600,  # Min: 600
             citation_count=20,  # Min: 20
         )
@@ -141,7 +141,9 @@ class TestAcademicStandardsCalibration:
         result = score_draft_quality(ctx)
 
         # Bachelor has higher requirements - may need more content
-        assert result.word_count_score >= 15, f"Word count should be decent. Got: {result.word_count_score}"
+        assert result.word_count_score >= 15, (
+            f"Word count should be decent. Got: {result.word_count_score}"
+        )
 
     def test_bachelor_thesis_well_above_minimum(self):
         """Bachelor thesis well above minimum should score high."""
@@ -155,7 +157,9 @@ class TestAcademicStandardsCalibration:
 
         result = score_draft_quality(ctx)
 
-        assert result.total_score >= 60, f"Well-done bachelor should score 60+. Got: {result.total_score}"
+        assert result.total_score >= 60, (
+            f"Well-done bachelor should score 60+. Got: {result.total_score}"
+        )
 
     # =========================================================================
     # MASTER THESIS CALIBRATION (15,000-30,000 words, 40-80 citations)
@@ -165,22 +169,24 @@ class TestAcademicStandardsCalibration:
         """Master thesis meeting minimum requirements should pass."""
         ctx = self._create_context_with_word_counts(
             academic_level="master",
-            intro_words=1500,   # Min: 1500
-            body_words=10000,   # Min: 10000
+            intro_words=1500,  # Min: 1500
+            body_words=10000,  # Min: 10000
             conclusion_words=1000,  # Min: 1000
             citation_count=40,  # Min: 40
         )
 
         result = score_draft_quality(ctx)
 
-        assert result.word_count_score >= 15, f"Master minimum should score decently. Got: {result.word_count_score}"
+        assert result.word_count_score >= 15, (
+            f"Master minimum should score decently. Got: {result.word_count_score}"
+        )
 
     def test_master_thesis_insufficient_length_flagged(self):
         """Master thesis with insufficient length should be flagged."""
         ctx = self._create_context_with_word_counts(
             academic_level="master",
-            intro_words=500,    # Way below 1500
-            body_words=3000,    # Way below 10000
+            intro_words=500,  # Way below 1500
+            body_words=3000,  # Way below 10000
             conclusion_words=300,  # Way below 1000
             citation_count=15,  # Way below 40
         )
@@ -200,8 +206,8 @@ class TestAcademicStandardsCalibration:
         """PhD thesis with minimum requirements."""
         ctx = self._create_context_with_word_counts(
             academic_level="phd",
-            intro_words=2500,   # Min: 2500
-            body_words=20000,   # Min: 20000
+            intro_words=2500,  # Min: 2500
+            body_words=20000,  # Min: 20000
             conclusion_words=2000,  # Min: 2000
             citation_count=80,  # Min: 80
         )
@@ -209,14 +215,16 @@ class TestAcademicStandardsCalibration:
         result = score_draft_quality(ctx)
 
         # PhD has very high requirements
-        assert result.word_count_score >= 10, f"PhD minimum should score at least 10. Got: {result.word_count_score}"
+        assert result.word_count_score >= 10, (
+            f"PhD minimum should score at least 10. Got: {result.word_count_score}"
+        )
 
     def test_phd_thesis_far_below_requirements_fails_hard(self):
         """PhD thesis far below requirements should fail significantly."""
         ctx = self._create_context_with_word_counts(
             academic_level="phd",
-            intro_words=500,    # Way below 2500
-            body_words=5000,    # Way below 20000
+            intro_words=500,  # Way below 2500
+            body_words=5000,  # Way below 20000
             conclusion_words=300,  # Way below 2000
             citation_count=20,  # Way below 80
         )
@@ -225,7 +233,9 @@ class TestAcademicStandardsCalibration:
 
         assert result.passed is False, "Insufficient PhD should fail"
         # Word count should be 0 (all sections very short)
-        assert result.word_count_score == 0, f"Word count should be 0. Got: {result.word_count_score}"
+        assert result.word_count_score == 0, (
+            f"Word count should be 0. Got: {result.word_count_score}"
+        )
         # Should have multiple issues flagged
         assert len(result.issues) >= 4, f"Should flag multiple issues. Got: {len(result.issues)}"
 
@@ -237,7 +247,7 @@ class TestCitationDensityCalibration:
         """1 citation per 500 words is considered good density."""
         ctx = DraftContext()
         ctx.academic_level = "research_paper"
-        ctx.word_targets = {'min_citations': 10}
+        ctx.word_targets = {"min_citations": 10}
 
         # 2500 words = need 5 citations for good density
         ctx.intro_output = "word " * 500 + "{cite_001} {cite_002}"
@@ -254,7 +264,7 @@ class TestCitationDensityCalibration:
         """Very sparse citations should be flagged."""
         ctx = DraftContext()
         ctx.academic_level = "research_paper"
-        ctx.word_targets = {'min_citations': 10}
+        ctx.word_targets = {"min_citations": 10}
 
         # 3000 words but only 2 citations
         ctx.intro_output = "word " * 1000 + "{cite_001}"
@@ -262,7 +272,7 @@ class TestCitationDensityCalibration:
         ctx.conclusion_output = "word " * 500
 
         issues = []
-        score = _score_citations(ctx, issues)
+        _score_citations(ctx, issues)  # result unused: assertions read `issues`
 
         # Should flag low density
         issues_text = " ".join(issues).lower()
@@ -276,7 +286,7 @@ class TestSectionCompletenessCalibration:
         """All sections with substantial content should score high."""
         ctx = DraftContext()
         ctx.academic_level = "research_paper"
-        ctx.word_targets = {'min_citations': 10}
+        ctx.word_targets = {"min_citations": 10}
 
         # All sections with > 100 chars
         ctx.intro_output = "Introduction content here. " * 20
@@ -289,13 +299,15 @@ class TestSectionCompletenessCalibration:
 
         result = score_draft_quality(ctx)
 
-        assert result.completeness_score >= 20, f"All sections present should score 20+. Got: {result.completeness_score}"
+        assert result.completeness_score >= 20, (
+            f"All sections present should score 20+. Got: {result.completeness_score}"
+        )
 
     def test_missing_sections_flagged(self):
         """Missing sections should be explicitly flagged."""
         ctx = DraftContext()
         ctx.academic_level = "research_paper"
-        ctx.word_targets = {'min_citations': 10}
+        ctx.word_targets = {"min_citations": 10}
 
         # Only intro and conclusion
         ctx.intro_output = "Introduction content here. " * 20
@@ -320,7 +332,7 @@ class TestStructureCalibration:
         """Well-structured markdown should score high."""
         ctx = DraftContext()
         ctx.academic_level = "research_paper"
-        ctx.word_targets = {'min_citations': 10}
+        ctx.word_targets = {"min_citations": 10}
 
         ctx.intro_output = """# Introduction
 
@@ -372,13 +384,15 @@ Directions for future research.
 
         result = score_draft_quality(ctx)
 
-        assert result.structure_score >= 15, f"Well-structured should score 15+. Got: {result.structure_score}"
+        assert result.structure_score >= 15, (
+            f"Well-structured should score 15+. Got: {result.structure_score}"
+        )
 
     def test_placeholder_text_penalized(self):
         """Placeholder text like TODO and [INSERT] should be penalized."""
         ctx = DraftContext()
         ctx.academic_level = "research_paper"
-        ctx.word_targets = {'min_citations': 10}
+        ctx.word_targets = {"min_citations": 10}
 
         ctx.intro_output = "# Introduction\n\nTODO: Add introduction content."
         ctx.body_output = "## Methods\n\n[INSERT methodology here]\n\nLorem ipsum dolor sit amet."

@@ -104,7 +104,10 @@ class GeminiModelWrapper:
                 config["temperature"] = generation_config.temperature
             if hasattr(generation_config, "max_output_tokens"):
                 config["max_output_tokens"] = generation_config.max_output_tokens
-            if hasattr(generation_config, "response_mime_type") and generation_config.response_mime_type:
+            if (
+                hasattr(generation_config, "response_mime_type")
+                and generation_config.response_mime_type
+            ):
                 config["response_mime_type"] = generation_config.response_mime_type
 
             # Handle dict
@@ -156,9 +159,7 @@ def create_gemini_client(
         ValueError: If no API key found
     """
     if not genai:
-        raise ImportError(
-            "google-genai not installed. Run: pip install google-genai>=1.0.0"
-        )
+        raise ImportError("google-genai not installed. Run: pip install google-genai>=1.0.0")
 
     api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:

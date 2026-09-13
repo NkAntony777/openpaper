@@ -2,14 +2,14 @@
 """Tests for checkpoint round-trip of the new structured-intent fields."""
 
 import json
+import sys
 from pathlib import Path
 
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
-from utils.checkpoint import save_checkpoint, load_checkpoint, restore_context
 from phases.context import DraftContext
 from research_brief import ResearchBrief
+from utils.checkpoint import load_checkpoint, restore_context, save_checkpoint
 
 
 def _make_ctx(tmp_path):
@@ -36,7 +36,10 @@ class TestBriefCheckpointRoundtrip:
         assert completed == "research"
 
         restored = _make_ctx(tmp_path)
-        restore_context(restored, json.loads((tmp_path / "checkpoint.json").read_text(encoding="utf-8")))
+        restore_context(
+            restored,
+            json.loads((tmp_path / "checkpoint.json").read_text(encoding="utf-8")),
+        )
         assert restored.research_brief is not None
         assert restored.research_brief.title == "Paper X"
         assert restored.research_brief.baselines[0].name == "TGN"
@@ -72,9 +75,12 @@ class TestBriefCheckpointRoundtrip:
     def test_legacy_checkpoint_still_loads(self, tmp_path):
         """Old checkpoints (no new fields) must restore without errors."""
         legacy = {
-            "version": "1.0", "completed_phase": "compose",
-            "topic": "Legacy", "blurb": None,
-            "scout_output": "s", "architect_output": "a",
+            "version": "1.0",
+            "completed_phase": "compose",
+            "topic": "Legacy",
+            "blurb": None,
+            "scout_output": "s",
+            "architect_output": "a",
         }
         restored = _make_ctx(tmp_path)
         restore_context(restored, legacy)

@@ -4,24 +4,30 @@ ABOUTME: Base API client with error handling, retries, and rate limiting
 ABOUTME: Provides production-grade HTTP request infrastructure for academic APIs
 """
 
-import time
 import logging
 import random
+import time
+from typing import Any, Dict, Optional
+
 import requests
-from typing import Optional, Dict, Any
 
 # Backpressure integration for cross-container rate limit coordination
 _backpressure_manager = None
+
+
 def get_backpressure_manager():
     """Lazy-load backpressure manager to avoid circular imports."""
     global _backpressure_manager
     if _backpressure_manager is None:
         try:
             from utils.backpressure import BackpressureManager
+
             _backpressure_manager = BackpressureManager()
         except ImportError:
             pass
     return _backpressure_manager
+
+
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
@@ -40,13 +46,14 @@ USER_AGENTS = [
 # Example: PROXY_LIST_ENV="proxy1.com:8080:user:pass,proxy2.com:8080:user:pass"
 import os
 
+
 def _load_proxy_list() -> list:
     """Load and validate proxy list from PROXY_LIST environment variable."""
-    proxy_env = os.getenv('PROXY_LIST', '')
+    proxy_env = os.getenv("PROXY_LIST", "")
     if not proxy_env:
         return []
 
-    proxies = [p.strip() for p in proxy_env.split(',') if p.strip()]
+    proxies = [p.strip() for p in proxy_env.split(",") if p.strip()]
 
     # Log proxy count (don't log credentials for security)
     # Use DEBUG level to avoid showing in CLI mode
@@ -54,19 +61,25 @@ def _load_proxy_list() -> list:
         logger.debug(f"Loaded {len(proxies)} proxies for rotation")
         # Validate format (basic check)
         for idx, proxy in enumerate(proxies, 1):
-            parts = proxy.split(':')
+            parts = proxy.split(":")
             if len(parts) not in [2, 4]:
-                logger.warning(f"Proxy {idx} has unexpected format (expected host:port or host:port:user:pass)")
+                logger.warning(
+                    f"Proxy {idx} has unexpected format (expected host:port or host:port:user:pass)"
+                )
 
     return proxies
 
+
 PROXY_LIST: list = _load_proxy_list()
+
 
 def mask_credentials(url: str) -> str:
     """Mask credentials in URL for safe logging."""
     import re
+
     # Pattern: user:password@ in URLs
-    return re.sub(r'://([^:]+):([^@]+)@', r'://\1:****@', url)
+    return re.sub(r"://([^:]+):([^@]+)@", r"://\1:****@", url)
+
 
 def parse_proxy(proxy_str: str) -> dict:
     """Parse proxy string to requests-compatible dict.
@@ -85,12 +98,14 @@ def parse_proxy(proxy_str: str) -> dict:
         return {}
     return {"http": proxy_url, "https": proxy_url}
 
+
 # =========================================================================
 # SSRF Protection - Validate URLs before making requests
 # =========================================================================
 
 import ipaddress
 from urllib.parse import urlparse
+
 
 def is_safe_url(url: str) -> tuple:
     """
@@ -111,14 +126,14 @@ def is_safe_url(url: str) -> tuple:
         return (False, "invalid_url")
 
     # Only allow http/https schemes
-    if parsed.scheme not in ('http', 'https'):
+    if parsed.scheme not in ("http", "https"):
         return (False, f"unsafe_scheme_{parsed.scheme}")
 
     # Block internal/private IP ranges
     hostname = parsed.hostname
     if hostname:
         # Check for localhost variations
-        if hostname in ('localhost', '127.0.0.1', '::1', '0.0.0.0'):
+        if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
             return (False, "localhost_blocked")
 
         # Try to parse as IP address to check for private ranges
@@ -131,11 +146,12 @@ def is_safe_url(url: str) -> tuple:
             pass
 
         # Block cloud metadata endpoints
-        metadata_hosts = ['169.254.169.254', 'metadata.google.internal', 'metadata.azure.com']
+        metadata_hosts = ["169.254.169.254", "metadata.google.internal", "metadata.azure.com"]
         if hostname in metadata_hosts:
             return (False, "cloud_metadata_blocked")
 
     return (True, "valid")
+
 
 # Standard browser headers
 BROWSER_HEADERS = {
@@ -153,76 +169,96 @@ import datetime
 
 CURRENT_YEAR = datetime.datetime.now().year
 
+
 def validate_author_name(author_name: str) -> tuple:
     """
     Validate author name is academically acceptable.
-    
+
     Args:
         author_name: Author name string
-        
+
     Returns:
         Tuple of (is_valid, reason)
     """
     if not author_name:
         return (False, "empty")
-    
+
     name = author_name.strip()
-    
+
     # Reject single-character authors (e.g., "R et al.")
     if len(name) <= 2:
         return (False, "too_short")
-    
+
     # Reject domain-like authors (e.g., "education.illinois.edu")
-    domain_tlds = ['.com', '.org', '.net', '.edu', '.gov', '.io', '.ai', '.int']
-    if '.' in name and any(tld in name.lower() for tld in domain_tlds):
+    domain_tlds = [".com", ".org", ".net", ".edu", ".gov", ".io", ".ai", ".int"]
+    if "." in name and any(tld in name.lower() for tld in domain_tlds):
         return (False, "domain_as_author")
-    
+
     # Reject URLs as authors
-    if name.startswith('http://') or name.startswith('https://'):
+    if name.startswith("http://") or name.startswith("https://"):
         return (False, "url_as_author")
-    
+
     # Reject generic/institutional author names (metadata pollution)
     generic_terms = [
-        'working paper', 'discussion paper', 'technical report', 'staff report',
-        'research paper', 'policy brief', 'white paper', 'occasional paper',
-        'series', 'anonymous', 'unknown', 'author', 'authors', 'editor', 'editors',
-        'committee', 'commission', 'group', 'team', 'staff', 'admin', 'administrator'
+        "working paper",
+        "discussion paper",
+        "technical report",
+        "staff report",
+        "research paper",
+        "policy brief",
+        "white paper",
+        "occasional paper",
+        "series",
+        "anonymous",
+        "unknown",
+        "author",
+        "authors",
+        "editor",
+        "editors",
+        "committee",
+        "commission",
+        "group",
+        "team",
+        "staff",
+        "admin",
+        "administrator",
     ]
     name_lower = name.lower()
     if any(term in name_lower for term in generic_terms):
         return (False, "generic_author")
-    
+
     return (True, "valid")
+
 
 def validate_publication_year(year: int) -> tuple:
     """
     Validate publication year is reasonable.
-    
+
     Args:
         year: Publication year
-        
+
     Returns:
         Tuple of (is_valid, reason, is_recent)
     """
     if not year:
         return (False, "no_year", False)
-    
+
     try:
         year_int = int(year)
     except (ValueError, TypeError):
         return (False, "invalid_year", False)
-    
+
     # Future years are impossible
     if year_int > CURRENT_YEAR:
         return (False, "future_year", False)
-    
+
     # Very old papers (pre-1900) are suspicious
     if year_int < 1900:
         return (False, "ancient_year", False)
-    
+
     # Current year papers might be preprints
-    is_recent = (year_int == CURRENT_YEAR)
-    
+    is_recent = year_int == CURRENT_YEAR
+
     return (True, "valid", is_recent)
 
 
@@ -332,18 +368,17 @@ class BaseAPIClient(ABC):
 
                 # Forward client IP for rate limit distribution (helps avoid 429 across users)
                 client_ip = self.get_client_ip()
-                if client_ip and client_ip != 'unknown':
+                if client_ip and client_ip != "unknown":
                     headers["X-Forwarded-For"] = client_ip
 
                 # Add API key header if available (e.g., Semantic Scholar uses x-api-key)
                 if self.api_key:
                     headers["x-api-key"] = self.api_key
-                
+
                 # Select proxy for this request
                 proxy_str = random.choice(PROXY_LIST) if PROXY_LIST else None
                 proxy_dict = parse_proxy(proxy_str) if proxy_str else None
-                
-                
+
                 response = self.session.request(
                     method=method,
                     url=url,
@@ -364,11 +399,12 @@ class BaseAPIClient(ABC):
 
                 elif response.status_code == 429:
                     # Rate limited - with proxy rotation, retry immediately with different proxy
-                    
+
                     bp = get_backpressure_manager()
                     proxy_used = random.choice(PROXY_LIST) if PROXY_LIST else None
                     if bp and self.api_type:
                         from utils.backpressure import APIType
+
                         try:
                             api_enum = APIType(self.api_type)
                             bp.signal_429(api_enum, proxy_id=proxy_used if proxy_used else None)
@@ -382,15 +418,19 @@ class BaseAPIClient(ABC):
                     else:
                         # Exponential backoff: 3s, 6s, 12s, 24s, 48s for attempts 1-5
                         # This gives Semantic Scholar time to reset rate limits
-                        wait_time = 3 * (2 ** attempt)
-                    logger.debug(f"Rate limited (429), waiting {wait_time:.1f}s before retry (attempt {attempt + 1}/{self.max_retries})")
+                        wait_time = 3 * (2**attempt)
+                    logger.debug(
+                        f"Rate limited (429), waiting {wait_time:.1f}s before retry (attempt {attempt + 1}/{self.max_retries})"
+                    )
                     time.sleep(wait_time)
                     continue
 
                 elif response.status_code >= 500:
                     # Server error - retry (with proxies: minimal delay, without: exponential backoff)
                     wait_time = 0.5 if PROXY_LIST else 2**attempt
-                    logger.warning(f"Server error ({response.status_code}), waiting {wait_time}s before retry")
+                    logger.warning(
+                        f"Server error ({response.status_code}), waiting {wait_time}s before retry"
+                    )
                     time.sleep(wait_time)
                     continue
 
@@ -423,7 +463,9 @@ class BaseAPIClient(ABC):
 
         # All retries exhausted - this is normal, other citation sources will be tried
         # Using debug level since fallback to Crossref/Gemini Grounded handles this gracefully
-        logger.debug(f"API unavailable after {self.max_retries} retries: {url[:60]}... (fallback sources will be used)")
+        logger.debug(
+            f"API unavailable after {self.max_retries} retries: {url[:60]}... (fallback sources will be used)"
+        )
         return None
 
     @abstractmethod

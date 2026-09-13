@@ -3,9 +3,9 @@ ABOUTME: API-backed citation research using Crossref, OpenAlex, and Semantic Sch
 ABOUTME: Provides reliable paper lookup with 95%+ success rate (vs 40% LLM-only)
 """
 
-from .orchestrator import CitationResearcher
 from .crossref import CrossrefClient
 from .openalex import OpenAlexClient
+from .orchestrator import CitationResearcher
 from .semantic_scholar import SemanticScholarClient
 
 __all__ = [

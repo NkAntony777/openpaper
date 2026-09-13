@@ -4,13 +4,14 @@ ABOUTME: Production-grade academic document export utility with strategy pattern
 ABOUTME: Supports multiple PDF engines (LibreOffice, Pandoc, WeasyPrint) with auto-fallback
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Literal, Optional
 
 # Use centralized logging system
 from utils.logging_config import get_logger
+
 logger = get_logger(__name__)
 
 # Add project root to path for subprocess/different CWD execution
@@ -19,10 +20,10 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from utils.pdf_engines import (
-    PDFGenerationOptions,
     PDFEngineFactory,
+    PDFGenerationOptions,
     get_available_engines,
-    get_recommended_engine
+    get_recommended_engine,
 )
 
 
@@ -41,14 +42,14 @@ def extract_metadata_from_yaml(md_file: Path) -> dict:
     import yaml
 
     try:
-        with open(md_file, 'r', encoding='utf-8') as f:
+        with open(md_file, "r", encoding="utf-8") as f:
             content = f.read()
 
         # Extract YAML frontmatter
-        if not content.strip().startswith('---'):
+        if not content.strip().startswith("---"):
             return {}
 
-        parts = content.split('---', 2)
+        parts = content.split("---", 2)
         if len(parts) < 3:
             return {}
 
@@ -58,33 +59,31 @@ def extract_metadata_from_yaml(md_file: Path) -> dict:
         # Normalize localized field names to English
         field_map = {
             # German
-            'titel': 'title',
-            'untertitel': 'subtitle',
-            'autor': 'author',
-            'datum': 'date',
+            "titel": "title",
+            "untertitel": "subtitle",
+            "autor": "author",
+            "datum": "date",
             # Spanish
-            'título': 'title',
-            'subtítulo': 'subtitle',
-            'autor': 'author',
-            'fecha': 'date',
+            "título": "title",
+            "subtítulo": "subtitle",
+            "fecha": "date",
             # French
-            'titre': 'title',
-            'sous-titre': 'subtitle',
-            'auteur': 'author',
-            'date': 'date',
+            "titre": "title",
+            "sous-titre": "subtitle",
+            "auteur": "author",
             # English (pass-through)
-            'title': 'title',
-            'subtitle': 'subtitle',
-            'author': 'author',
-            'date': 'date',
-            'institution': 'institution',
-            'department': 'department',
-            'degree': 'degree',
-            'advisor': 'advisor',
-            'student_id': 'student_id',
-            'project_type': 'project_type',
-            'system_credit': 'system_credit',
-            'generated_by': 'system_credit',  # Map generated_by to system_credit
+            "title": "title",
+            "subtitle": "subtitle",
+            "author": "author",
+            "date": "date",
+            "institution": "institution",
+            "department": "department",
+            "degree": "degree",
+            "advisor": "advisor",
+            "student_id": "student_id",
+            "project_type": "project_type",
+            "system_credit": "system_credit",
+            "generated_by": "system_credit",  # Map generated_by to system_credit
         }
 
         normalized = {}
@@ -102,8 +101,8 @@ def extract_metadata_from_yaml(md_file: Path) -> dict:
 def export_pdf(
     md_file: Path,
     output_pdf: Path,
-    engine: Literal['auto', 'libreoffice', 'pandoc', 'weasyprint'] = 'auto',
-    options: Optional[PDFGenerationOptions] = None
+    engine: Literal["auto", "libreoffice", "pandoc", "weasyprint"] = "auto",
+    options: Optional[PDFGenerationOptions] = None,
 ) -> bool:
     """
     Export markdown to PDF using specified engine.
@@ -135,31 +134,31 @@ def export_pdf(
     # Create options with metadata if not provided
     if options is None:
         options = PDFGenerationOptions(
-            title=metadata.get('title'),
-            subtitle=metadata.get('subtitle'),
-            author=metadata.get('author'),
-            date=metadata.get('date'),
-            institution=metadata.get('institution'),
-            department=metadata.get('department'),
-            course=metadata.get('degree'),  # Map degree to course field
-            instructor=metadata.get('advisor'),  # Map advisor to instructor field
-            student_id=metadata.get('student_id'),
-            project_type=metadata.get('project_type'),
-            system_credit=metadata.get('system_credit')
+            title=metadata.get("title"),
+            subtitle=metadata.get("subtitle"),
+            author=metadata.get("author"),
+            date=metadata.get("date"),
+            institution=metadata.get("institution"),
+            department=metadata.get("department"),
+            course=metadata.get("degree"),  # Map degree to course field
+            instructor=metadata.get("advisor"),  # Map advisor to instructor field
+            student_id=metadata.get("student_id"),
+            project_type=metadata.get("project_type"),
+            system_credit=metadata.get("system_credit"),
         )
 
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info(f"Generating PDF: {output_pdf.name}")
     logger.info(f"Input: {md_file}")
     logger.info(f"Engine: {engine}")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     # Use factory to generate with automatic fallback
     result = PDFEngineFactory.generate_with_fallback(
         md_file=md_file,
         output_pdf=output_pdf,
         options=options,
-        preferred_engine=engine if engine != 'auto' else None
+        preferred_engine=engine if engine != "auto" else None,
     )
 
     # Display result
@@ -203,46 +202,44 @@ def _normalize_yaml_for_pandoc(md_content: str) -> str:
     # Translation map: localized → English
     field_translations = {
         # German
-        'titel:': 'title:',
-        'untertitel:': 'subtitle:',
-        'autor:': 'author:',
-        'datum:': 'date:',
-        'wortzahl:': 'word_count:',
-        'seitenzahl:': 'page_count:',
-        'sprache:': 'language:',
-        'thema:': 'topic:',
-        'schlagwörter:': 'keywords:',
-        'qualitäts_bewertung:': 'quality_score:',
-        'system_ersteller:': 'system_creator:',
-        'zitate_verifiziert:': 'citations_verified:',
-        'visuelle_elemente:': 'visual_elements:',
-        'generierungs_methode:': 'generation_method:',
-        'beschreibung_showcase:': 'showcase_description:',
-        'system_fähigkeiten:': 'system_capabilities:',
-        'aufruf_zur_aktion:': 'call_to_action:',
-        'lizenz:': 'license:',
-
+        "titel:": "title:",
+        "untertitel:": "subtitle:",
+        "autor:": "author:",
+        "datum:": "date:",
+        "wortzahl:": "word_count:",
+        "seitenzahl:": "page_count:",
+        "sprache:": "language:",
+        "thema:": "topic:",
+        "schlagwörter:": "keywords:",
+        "qualitäts_bewertung:": "quality_score:",
+        "system_ersteller:": "system_creator:",
+        "zitate_verifiziert:": "citations_verified:",
+        "visuelle_elemente:": "visual_elements:",
+        "generierungs_methode:": "generation_method:",
+        "beschreibung_showcase:": "showcase_description:",
+        "system_fähigkeiten:": "system_capabilities:",
+        "aufruf_zur_aktion:": "call_to_action:",
+        "lizenz:": "license:",
         # Spanish
-        'título:': 'title:',
-        'subtítulo:': 'subtitle:',
-        'fecha:': 'date:',
-        'recuento_de_palabras:': 'word_count:',
-        'idioma:': 'language:',
-
+        "título:": "title:",
+        "subtítulo:": "subtitle:",
+        "fecha:": "date:",
+        "recuento_de_palabras:": "word_count:",
+        "idioma:": "language:",
         # French
-        'titre:': 'title:',
-        'sous-titre:': 'subtitle:',
-        'auteur:': 'author:',
-        'nombre_de_mots:': 'word_count:',
-        'langue:': 'language:',
+        "titre:": "title:",
+        "sous-titre:": "subtitle:",
+        "auteur:": "author:",
+        "nombre_de_mots:": "word_count:",
+        "langue:": "language:",
     }
 
     # Only process if YAML frontmatter exists
-    if not md_content.strip().startswith('---'):
+    if not md_content.strip().startswith("---"):
         return md_content
 
     # Extract YAML frontmatter
-    parts = md_content.split('---', 2)
+    parts = md_content.split("---", 2)
     if len(parts) < 3:
         return md_content
 
@@ -252,14 +249,11 @@ def _normalize_yaml_for_pandoc(md_content: str) -> str:
     # Translate field names (case-insensitive)
     for localized, english in field_translations.items():
         yaml_content = re.sub(
-            f'^{re.escape(localized)}',
-            english,
-            yaml_content,
-            flags=re.MULTILINE | re.IGNORECASE
+            f"^{re.escape(localized)}", english, yaml_content, flags=re.MULTILINE | re.IGNORECASE
         )
 
     # Reconstruct markdown
-    return f'---{yaml_content}---{rest_content}'
+    return f"---{yaml_content}---{rest_content}"
 
 
 def export_docx_basic(md_file: Path, output_docx: Path) -> bool:
@@ -284,8 +278,8 @@ def export_docx_basic(md_file: Path, output_docx: Path) -> bool:
 
     try:
         from docx import Document
-        from docx.shared import Pt, Inches
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.shared import Inches, Pt
     except ImportError:
         logger.error("python-docx not installed")
         logger.error("Run: pip install python-docx")
@@ -293,7 +287,7 @@ def export_docx_basic(md_file: Path, output_docx: Path) -> bool:
 
     try:
         # Read markdown
-        with open(md_file, 'r', encoding='utf-8') as f:
+        with open(md_file, "r", encoding="utf-8") as f:
             md_content = f.read()
 
         # Normalize YAML for Pandoc (translate localized field names to English)
@@ -317,7 +311,7 @@ def export_docx_basic(md_file: Path, output_docx: Path) -> bool:
         footer_para = footer.paragraphs[0]
         footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = footer_para.add_run("[Add page numbers via Insert > Page Number in Word]")
-        run.font.name = 'Times New Roman'
+        run.font.name = "Times New Roman"
         run.font.size = Pt(10)
         run.font.italic = True
 
@@ -329,25 +323,25 @@ def export_docx_basic(md_file: Path, output_docx: Path) -> bool:
                 continue
 
             # Title (# heading)
-            if line.startswith('# '):
+            if line.startswith("# "):
                 para = doc.add_heading(line[2:], level=1)
                 para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 continue
 
             # Section heading (## heading)
-            if line.startswith('## '):
+            if line.startswith("## "):
                 doc.add_heading(line[3:], level=2)
                 continue
 
             # Subsection heading (### heading)
-            if line.startswith('### '):
+            if line.startswith("### "):
                 doc.add_heading(line[4:], level=3)
                 continue
 
             # Horizontal rule
-            if line.startswith('---'):
+            if line.startswith("---"):
                 para = doc.add_paragraph()
-                run = para.add_run('_' * 60)
+                run = para.add_run("_" * 60)
                 run.font.size = Pt(12)
                 continue
 
@@ -360,7 +354,7 @@ def export_docx_basic(md_file: Path, output_docx: Path) -> bool:
             # Set font
             if para.runs:
                 run = para.runs[0]
-                run.font.name = 'Times New Roman'
+                run.font.name = "Times New Roman"
                 run.font.size = Pt(12)
 
         # Save
@@ -375,9 +369,7 @@ def export_docx_basic(md_file: Path, output_docx: Path) -> bool:
 
 
 def export_docx(
-    md_file: Path,
-    output_docx: Path,
-    options: Optional[PDFGenerationOptions] = None
+    md_file: Path, output_docx: Path, options: Optional[PDFGenerationOptions] = None
 ) -> bool:
     """
     Export markdown to DOCX with full formatting support (tables, citations, styles).
@@ -408,8 +400,8 @@ def export_docx(
     md_file = Path(md_file)
     output_docx = Path(output_docx)
 
-    import subprocess
     import shutil
+    import subprocess
 
     # Extract metadata from YAML frontmatter
     metadata = extract_metadata_from_yaml(md_file)
@@ -417,24 +409,24 @@ def export_docx(
     # Create options with metadata if not provided
     if options is None:
         options = PDFGenerationOptions(
-            title=metadata.get('title'),
-            subtitle=metadata.get('subtitle'),
-            author=metadata.get('author'),
-            date=metadata.get('date'),
-            institution=metadata.get('institution'),
-            department=metadata.get('department'),
-            faculty=metadata.get('faculty'),
-            course=metadata.get('degree'),  # Map degree to course field
-            instructor=metadata.get('advisor'),  # Map advisor to instructor field
-            second_examiner=metadata.get('second_examiner'),
-            student_id=metadata.get('student_id'),
-            project_type=metadata.get('project_type'),
-            system_credit=metadata.get('system_credit'),
-            location=metadata.get('location')
+            title=metadata.get("title"),
+            subtitle=metadata.get("subtitle"),
+            author=metadata.get("author"),
+            date=metadata.get("date"),
+            institution=metadata.get("institution"),
+            department=metadata.get("department"),
+            faculty=metadata.get("faculty"),
+            course=metadata.get("degree"),  # Map degree to course field
+            instructor=metadata.get("advisor"),  # Map advisor to instructor field
+            second_examiner=metadata.get("second_examiner"),
+            student_id=metadata.get("student_id"),
+            project_type=metadata.get("project_type"),
+            system_credit=metadata.get("system_credit"),
+            location=metadata.get("location"),
         )
 
     # Try Pandoc method first (best quality)
-    if not shutil.which('pandoc'):
+    if not shutil.which("pandoc"):
         logger.warning("Pandoc not found - falling back to basic DOCX export")
         logger.warning("Tables and advanced formatting will be limited")
         logger.info("Install Pandoc for better results: sudo apt install pandoc")
@@ -443,22 +435,24 @@ def export_docx(
     try:
         # Read and normalize YAML field names for Pandoc compatibility
         # (Pandoc only recognizes English field names like 'title', 'author', 'date')
-        with open(md_file, 'r', encoding='utf-8') as f:
+        with open(md_file, "r", encoding="utf-8") as f:
             md_content = f.read()
 
         md_content = _normalize_yaml_for_pandoc(md_content)
 
         # Write normalized content to temporary file for Pandoc
         import tempfile
+
         temp_md = None
         try:
-            temp_fd, temp_path = tempfile.mkstemp(suffix='.md', text=True)
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".md", text=True)
             temp_md = Path(temp_path)
-            with open(temp_md, 'w', encoding='utf-8') as f:
+            with open(temp_md, "w", encoding="utf-8") as f:
                 f.write(md_content)
         finally:
             if temp_fd:
                 import os
+
                 os.close(temp_fd)
 
         # Locate reference document
@@ -471,42 +465,40 @@ def export_docx(
 
         # Build pandoc command (use normalized temp file)
         cmd = [
-            'pandoc',
+            "pandoc",
             str(temp_md),  # Use normalized markdown instead of original
-            '-o', str(output_docx),
-            '--from', 'markdown',
-            '--to', 'docx',
+            "-o",
+            str(output_docx),
+            "--from",
+            "markdown",
+            "--to",
+            "docx",
         ]
 
         # Add reference document for styling
         if reference_doc:
-            cmd.extend(['--reference-doc', str(reference_doc)])
+            cmd.extend(["--reference-doc", str(reference_doc)])
 
         # Add table of contents (Pandoc generates a proper Word TOC field)
         if options.enable_toc:
-            cmd.append('--toc')
-            cmd.extend(['--toc-depth', str(options.toc_depth)])
+            cmd.append("--toc")
+            cmd.extend(["--toc-depth", str(options.toc_depth)])
 
         # Add metadata if provided
         if options.title:
-            cmd.extend(['--metadata', f'title={options.title}'])
+            cmd.extend(["--metadata", f"title={options.title}"])
         if options.author:
-            cmd.extend(['--metadata', f'author={options.author}'])
+            cmd.extend(["--metadata", f"author={options.author}"])
 
-        logger.info("="*70)
+        logger.info("=" * 70)
         logger.info(f"Generating DOCX with Pandoc: {output_docx.name}")
         logger.info(f"Input: {md_file}")
         if reference_doc:
             logger.info(f"Reference doc: {reference_doc.name}")
-        logger.info("="*70)
+        logger.info("=" * 70)
 
         # Run pandoc
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
         if result.returncode != 0:
             logger.error(f"Pandoc failed with return code {result.returncode}")
@@ -525,27 +517,29 @@ def export_docx(
         post_options = {}
         if options:
             if options.institution:
-                post_options['institution'] = options.institution
-            if hasattr(options, 'faculty') and options.faculty:
-                post_options['faculty'] = options.faculty
+                post_options["institution"] = options.institution
+            if hasattr(options, "faculty") and options.faculty:
+                post_options["faculty"] = options.faculty
             if options.department:
-                post_options['department'] = options.department
+                post_options["department"] = options.department
             if options.course:
-                post_options['course'] = options.course
+                post_options["course"] = options.course
             if options.instructor:
-                post_options['instructor'] = options.instructor
-            if hasattr(options, 'second_examiner') and options.second_examiner:
-                post_options['second_examiner'] = options.second_examiner
+                post_options["instructor"] = options.instructor
+            if hasattr(options, "second_examiner") and options.second_examiner:
+                post_options["second_examiner"] = options.second_examiner
             if options.student_id:
-                post_options['student_id'] = options.student_id
-            if hasattr(options, 'project_type') and options.project_type:
-                post_options['project_type'] = options.project_type
-            if hasattr(options, 'system_credit') and options.system_credit:
-                post_options['system_credit'] = options.system_credit
-            if hasattr(options, 'location') and options.location:
-                post_options['location'] = options.location
+                post_options["student_id"] = options.student_id
+            if hasattr(options, "project_type") and options.project_type:
+                post_options["project_type"] = options.project_type
+            if hasattr(options, "system_credit") and options.system_credit:
+                post_options["system_credit"] = options.system_credit
+            if hasattr(options, "location") and options.location:
+                post_options["location"] = options.location
 
-        if not insert_academic_structure(output_docx, verbose=True, options=post_options if post_options else None):
+        if not insert_academic_structure(
+            output_docx, verbose=True, options=post_options if post_options else None
+        ):
             logger.warning("Post-processing failed - DOCX created but may lack page structure")
             logger.warning("DOCX will have inline title block instead of standalone pages")
             return True  # Still return True since basic DOCX was created
@@ -566,16 +560,18 @@ def export_docx(
 
 def show_available_engines() -> None:
     """Display available PDF engines and their status."""
-    logger.info("="*70)
+    logger.info("=" * 70)
     logger.info("Available PDF Engines")
-    logger.info("="*70)
+    logger.info("=" * 70)
 
     engines = get_available_engines()
     if not engines:
         logger.warning("No PDF engines available")
         logger.info("Install at least one of:")
         logger.info("  - LibreOffice: sudo apt install libreoffice-writer libreoffice-core-nogui")
-        logger.info("  - Pandoc: sudo apt install pandoc texlive-latex-base texlive-latex-recommended")
+        logger.info(
+            "  - Pandoc: sudo apt install pandoc texlive-latex-base texlive-latex-recommended"
+        )
         logger.info("  - WeasyPrint: pip install weasyprint")
         return
 
@@ -594,9 +590,9 @@ def main():
     # Logging is automatically configured by utils.logging_config on import
 
     parser = argparse.ArgumentParser(
-        description='Export markdown to professional academic PDF/DOCX',
+        description="Export markdown to professional academic PDF/DOCX",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''
+        epilog="""
 Examples:
   # Auto-select best engine
   python export_professional.py draft.md --pdf draft.pdf
@@ -615,21 +611,19 @@ Engine Options:
   libreoffice  - Use LibreOffice (best quality, requires installation)
   pandoc       - Use Pandoc/LaTeX (highest quality, academic standard)
   weasyprint   - Use WeasyPrint (fallback, known font rendering issues)
-        '''
+        """,
     )
-    parser.add_argument('input', nargs='?', help='Input markdown file')
-    parser.add_argument('--pdf', help='Output PDF file')
-    parser.add_argument('--docx', help='Output DOCX file')
+    parser.add_argument("input", nargs="?", help="Input markdown file")
+    parser.add_argument("--pdf", help="Output PDF file")
+    parser.add_argument("--docx", help="Output DOCX file")
     parser.add_argument(
-        '--engine',
-        choices=['auto', 'libreoffice', 'pandoc', 'weasyprint'],
-        default='auto',
-        help='PDF engine to use (default: auto)'
+        "--engine",
+        choices=["auto", "libreoffice", "pandoc", "weasyprint"],
+        default="auto",
+        help="PDF engine to use (default: auto)",
     )
     parser.add_argument(
-        '--list-engines',
-        action='store_true',
-        help='List available PDF engines and exit'
+        "--list-engines", action="store_true", help="List available PDF engines and exit"
     )
 
     args = parser.parse_args()
@@ -666,5 +660,5 @@ Engine Options:
     sys.exit(0 if success else 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

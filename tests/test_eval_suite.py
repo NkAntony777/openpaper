@@ -48,18 +48,14 @@ def _ledger(root: Path, section: str, entries) -> None:
 
 def test_match_forbidden_keyword_overlap():
     text = "There is a causal relationship between proximity and friendship in the wild."
-    hits = match_forbidden_claims(
-        text, ["causal relationship between proximity and friendship"]
-    )
+    hits = match_forbidden_claims(text, ["causal relationship between proximity and friendship"])
     assert len(hits) == 1
     assert hits[0]["overlap"] >= 0.6
 
 
 def test_match_forbidden_does_not_fire_on_stopwords_alone():
     text = "We show that this is the case in the data."
-    hits = match_forbidden_claims(
-        text, ["we show that proximity causes friendship"]
-    )
+    hits = match_forbidden_claims(text, ["we show that proximity causes friendship"])
     assert hits == []
 
 
@@ -72,19 +68,31 @@ def test_match_forbidden_single_keyword_substring():
 
 
 def test_finish_acceptance_clean(tmp_path):
-    write_checkpoint(tmp_path, {
-        "topic": "T",
-        "research_brief": {"forbidden_claims": ["causal relationship between proximity and friendship"]},
-    })
+    write_checkpoint(
+        tmp_path,
+        {
+            "topic": "T",
+            "research_brief": {
+                "forbidden_claims": ["causal relationship between proximity and friendship"]
+            },
+        },
+    )
     (tmp_path / "research").mkdir()
     (tmp_path / "research" / "bibliography.json").write_text(
-        json.dumps({"citations": [{"id": "cite_001"}]}), encoding="utf-8")
+        json.dumps({"citations": [{"id": "cite_001"}]}), encoding="utf-8"
+    )
     _intro(tmp_path, "DPR encodes queries independently {cite_001}.")
-    _ledger(tmp_path, "introduction", [{
-        "id": "CL-INTRODUCTION-1",
-        "claim": "DPR encodes queries independently",
-        "verdict": {"verdict": "SUPPORTED"},
-    }])
+    _ledger(
+        tmp_path,
+        "introduction",
+        [
+            {
+                "id": "CL-INTRODUCTION-1",
+                "claim": "DPR encodes queries independently",
+                "verdict": {"verdict": "SUPPORTED"},
+            }
+        ],
+    )
 
     gate = run_finish_acceptance(tmp_path)
     assert gate.passed is True
@@ -96,11 +104,21 @@ def test_finish_acceptance_clean(tmp_path):
 def test_finish_acceptance_rejects_unresolved_contradicted(tmp_path):
     write_checkpoint(tmp_path, {"topic": "T"})
     _intro(tmp_path, "The model reaches 99% accuracy.")
-    _ledger(tmp_path, "introduction", [{
-        "id": "CL-INTRODUCTION-1",
-        "claim": "The model reaches 99% accuracy",
-        "verdict": {"verdict": "CONTRADICTED", "wrong_part": "99%", "correct_value": "72%"},
-    }])
+    _ledger(
+        tmp_path,
+        "introduction",
+        [
+            {
+                "id": "CL-INTRODUCTION-1",
+                "claim": "The model reaches 99% accuracy",
+                "verdict": {
+                    "verdict": "CONTRADICTED",
+                    "wrong_part": "99%",
+                    "correct_value": "72%",
+                },
+            }
+        ],
+    )
 
     gate = run_finish_acceptance(tmp_path)
     assert gate.passed is False
@@ -111,12 +129,26 @@ def test_finish_acceptance_rejects_unresolved_contradicted(tmp_path):
 def test_finish_acceptance_accepts_resolved_contradicted(tmp_path):
     write_checkpoint(tmp_path, {"topic": "T"})
     _intro(tmp_path, "The model reaches 72% accuracy.")
-    _ledger(tmp_path, "introduction", [{
-        "id": "CL-INTRODUCTION-1",
-        "claim": "The model reaches 99% accuracy",
-        "verdict": {"verdict": "CONTRADICTED", "wrong_part": "99%", "correct_value": "72%"},
-        "resolution": {"status": "revised", "note": "find_replace", "resolved_at": "t"},
-    }])
+    _ledger(
+        tmp_path,
+        "introduction",
+        [
+            {
+                "id": "CL-INTRODUCTION-1",
+                "claim": "The model reaches 99% accuracy",
+                "verdict": {
+                    "verdict": "CONTRADICTED",
+                    "wrong_part": "99%",
+                    "correct_value": "72%",
+                },
+                "resolution": {
+                    "status": "revised",
+                    "note": "find_replace",
+                    "resolved_at": "t",
+                },
+            }
+        ],
+    )
 
     gate = run_finish_acceptance(tmp_path)
     assert gate.claims_clean is True
@@ -124,16 +156,23 @@ def test_finish_acceptance_accepts_resolved_contradicted(tmp_path):
 
 
 def test_finish_acceptance_rejects_forbidden_and_unknown_cite(tmp_path):
-    write_checkpoint(tmp_path, {
-        "topic": "T",
-        "research_brief": {"forbidden_claims": ["causal relationship between proximity and friendship"]},
-    })
+    write_checkpoint(
+        tmp_path,
+        {
+            "topic": "T",
+            "research_brief": {
+                "forbidden_claims": ["causal relationship between proximity and friendship"]
+            },
+        },
+    )
     (tmp_path / "research").mkdir()
     (tmp_path / "research" / "bibliography.json").write_text(
-        json.dumps({"citations": [{"id": "cite_001"}]}), encoding="utf-8")
-    _intro(tmp_path, (
-        "There is a causal relationship between proximity and friendship {cite_999}."
-    ))
+        json.dumps({"citations": [{"id": "cite_001"}]}), encoding="utf-8"
+    )
+    _intro(
+        tmp_path,
+        ("There is a causal relationship between proximity and friendship {cite_999}."),
+    )
 
     gate = run_finish_acceptance(tmp_path)
     assert gate.passed is False
@@ -179,14 +218,27 @@ def test_evaluate_root_token_cost_from_spent_marker(tmp_path):
 
 def test_check_thresholds_reports_each_miss():
     from harness.eval_suite import EvalMetrics
+
     m = EvalMetrics(
-        quality_score=10, factcheck_clean=False, citation_rate=0.5,
-        token_cost=0, fix_rounds=4, forbidden_hits=2, cite_missing=1, passed=False,
+        quality_score=10,
+        factcheck_clean=False,
+        citation_rate=0.5,
+        token_cost=0,
+        fix_rounds=4,
+        forbidden_hits=2,
+        cite_missing=1,
+        passed=False,
     )
-    fails = check_thresholds(m, {
-        "min_quality": 50, "require_factcheck_clean": True,
-        "min_citation_rate": 1.0, "max_forbidden_hits": 0, "expect_passed": True,
-    })
+    fails = check_thresholds(
+        m,
+        {
+            "min_quality": 50,
+            "require_factcheck_clean": True,
+            "min_citation_rate": 1.0,
+            "max_forbidden_hits": 0,
+            "expect_passed": True,
+        },
+    )
     assert len(fails) >= 4
 
 
@@ -196,16 +248,48 @@ def test_check_thresholds_reports_each_miss():
 def test_two_run_lessons_inject_into_second_paper_map(tmp_path):
     run1 = tmp_path / "run1"
     run1.mkdir()
-    (run1 / "run_journal.jsonl").write_text("\n".join([
-        json.dumps({"ts": "t", "type": "tool_execution_start",
-                    "summary": 'write_section {"section": "methodology", "content": "x"}'}),
-        json.dumps({"ts": "t", "type": "tool_execution_end", "summary": "write_section ERROR"}),
-        json.dumps({"ts": "t", "type": "tool_execution_start",
-                    "summary": 'write_section {"section": "methodology", "content": "x"}'}),
-        json.dumps({"ts": "t", "type": "tool_execution_end", "summary": "write_section ERROR"}),
-        json.dumps({"ts": "t", "type": "extension_error",
-                    "summary": "tool_call: write_section failed: guardrail: min_words"}),
-    ]), encoding="utf-8")
+    (run1 / "run_journal.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "ts": "t",
+                        "type": "tool_execution_start",
+                        "summary": 'write_section {"section": "methodology", "content": "x"}',
+                    }
+                ),
+                json.dumps(
+                    {
+                        "ts": "t",
+                        "type": "tool_execution_end",
+                        "summary": "write_section ERROR",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "ts": "t",
+                        "type": "tool_execution_start",
+                        "summary": 'write_section {"section": "methodology", "content": "x"}',
+                    }
+                ),
+                json.dumps(
+                    {
+                        "ts": "t",
+                        "type": "tool_execution_end",
+                        "summary": "write_section ERROR",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "ts": "t",
+                        "type": "extension_error",
+                        "summary": "tool_call: write_section failed: guardrail: min_words",
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     summary = distill(run1)
     assert summary["proposed"] >= 1
@@ -235,14 +319,17 @@ def test_two_run_lessons_inject_into_second_paper_map(tmp_path):
 
 
 def test_section_prompt_lists_forbidden_claims(tmp_path):
-    write_checkpoint(tmp_path, {
-        "topic": "T",
-        "academic_level": "master",
-        "citation_style": "apa",
-        "language": "en",
-        "word_targets": {"introduction": 100},
-        "research_brief": {"forbidden_claims": ["no causal claims about proximity"]},
-    })
+    write_checkpoint(
+        tmp_path,
+        {
+            "topic": "T",
+            "academic_level": "master",
+            "citation_style": "apa",
+            "language": "en",
+            "word_targets": {"introduction": 100},
+            "research_brief": {"forbidden_claims": ["no causal claims about proximity"]},
+        },
+    )
     prompt = build_section_prompt(tmp_path, "introduction")
     assert "FORBIDDEN claims" in prompt
     assert "no causal claims about proximity" in prompt
@@ -250,16 +337,25 @@ def test_section_prompt_lists_forbidden_claims(tmp_path):
 
 
 def test_paper_map_forbidden_and_open_claims(tmp_path):
-    write_checkpoint(tmp_path, {
-        "topic": "T",
-        "word_targets": {},
-        "research_brief": {"forbidden_claims": ["do not claim causality"]},
-    })
-    _ledger(tmp_path, "results", [{
-        "id": "CL-RESULTS-1",
-        "claim": "Accuracy is 99%",
-        "verdict": {"verdict": "CONTRADICTED", "wrong_part": "99%"},
-    }])
+    write_checkpoint(
+        tmp_path,
+        {
+            "topic": "T",
+            "word_targets": {},
+            "research_brief": {"forbidden_claims": ["do not claim causality"]},
+        },
+    )
+    _ledger(
+        tmp_path,
+        "results",
+        [
+            {
+                "id": "CL-RESULTS-1",
+                "claim": "Accuracy is 99%",
+                "verdict": {"verdict": "CONTRADICTED", "wrong_part": "99%"},
+            }
+        ],
+    )
     write_paper_map(tmp_path)
     text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
     assert "FORBIDDEN claims" in text
@@ -278,42 +374,65 @@ class _QuietDriver:
 
     def run(self, prompt, name):
         from harness.driver import DriverResult
+
         self.calls.append(name)
         if name.startswith("section-"):
             section = name.split("-", 1)[1]
             from agent_tools.common import SECTION_FILES
+
             f = self.root / SECTION_FILES[section]["file"]
             f.parent.mkdir(parents=True, exist_ok=True)
             f.write_text("word " * 200, encoding="utf-8")
-        return DriverResult(ok=True, reason="settled", stats={"cost": 0.01},
-                            settled_text="ok", budget_exceeded=False)
+        return DriverResult(
+            ok=True,
+            reason="settled",
+            stats={"cost": 0.01},
+            settled_text="ok",
+            budget_exceeded=False,
+        )
 
 
 def test_run_paper_fails_finish_gate_on_unresolved(tmp_path):
     root = tmp_path / "out"
     root.mkdir()
-    write_checkpoint(root, {"topic": "T", "academic_level": "master",
-                            "citation_style": "apa", "language": "en", "word_targets": {}})
-    _ledger(root, "introduction", [{
-        "id": "CL-INTRODUCTION-1",
-        "claim": "Accuracy is 99%",
-        "verdict": {"verdict": "CONTRADICTED", "wrong_part": "99%"},
-    }])
+    write_checkpoint(
+        root,
+        {
+            "topic": "T",
+            "academic_level": "master",
+            "citation_style": "apa",
+            "language": "en",
+            "word_targets": {},
+        },
+    )
+    _ledger(
+        root,
+        "introduction",
+        [
+            {
+                "id": "CL-INTRODUCTION-1",
+                "claim": "Accuracy is 99%",
+                "verdict": {"verdict": "CONTRADICTED", "wrong_part": "99%"},
+            }
+        ],
+    )
     calls = []
 
     def factory(**kwargs):
         return _QuietDriver(kwargs["root"], calls)
 
-    result = run_paper(root, sections=["introduction"], driver_factory=factory,
-                       budget=PaperBudget())
+    result = run_paper(
+        root, sections=["introduction"], driver_factory=factory, budget=PaperBudget()
+    )
     assert result.ok is False
     assert result.claims_clean is False
     assert any("CONTRADICTED" in g for g in result.finish_gaps)
 
 
 def test_cli_harness_eval_envelope(tmp_path, capsys):
-    from opendraft.cli import run_harness_command
     import shutil
+
+    from opendraft.cli import run_harness_command
 
     root = tmp_path / "clean"
     shutil.copytree(GOLD_DIR / "clean_mini", root)
@@ -326,8 +445,9 @@ def test_cli_harness_eval_envelope(tmp_path, capsys):
 
 
 def test_cli_harness_eval_dirty_exits_one(tmp_path, capsys):
-    from opendraft.cli import run_harness_command
     import shutil
+
+    from opendraft.cli import run_harness_command
 
     root = tmp_path / "dirty"
     shutil.copytree(GOLD_DIR / "dirty_mini", root)

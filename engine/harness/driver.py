@@ -31,8 +31,20 @@ REPO_DIR = ENGINE_DIR.parent
 ASSETS_DIR = Path(__file__).parent / "assets"
 EXTENSION_SOURCE = ASSETS_DIR / "opendraft-tools.ts"
 
-DEFAULT_PI_BIN = r"E:\npm-global\pi.cmd"
 DEFAULT_MODEL = "minimax-cn/MiniMax-M3"  # api.minimaxi.com/anthropic — where our key lives
+
+
+def _default_pi_bin() -> str:
+    """Resolve pi without any machine-specific default: PI_BIN env, then PATH.
+
+    Returns "pi" as a last resort — _spawn turns an OSError from that into a
+    readable DriverResult failure (and handles .cmd/.bat wrappers on Windows).
+    """
+    found = shutil.which("pi")
+    if found:
+        return found
+    return "pi"
+
 
 BUILTIN_TOOL_ALLOWLIST = "read,write,edit,grep,find,ls"
 TOOL_NAMES = sorted(MODULE_BY_NAME.keys())
@@ -161,8 +173,7 @@ def _default_opendraft_bin() -> str:
 
 
 _PYTHON_BOOTSTRAP = (
-    "import sys; sys.path.insert(0, {engine!r}); "
-    "from opendraft.cli import main; sys.exit(main())"
+    "import sys; sys.path.insert(0, {engine!r}); from opendraft.cli import main; sys.exit(main())"
 ).format(engine=str(ENGINE_DIR))
 
 
@@ -182,7 +193,8 @@ def _kill_process_tree(proc: subprocess.Popen) -> None:
         try:
             subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                capture_output=True, timeout=10,
+                capture_output=True,
+                timeout=10,
             )
             return
         except Exception:
@@ -205,7 +217,7 @@ class PiDriver:
     ):
         self.root = Path(root)
         self.model = model or os.environ.get("PI_MODEL") or DEFAULT_MODEL
-        self.pi_bin = pi_bin or os.environ.get("PI_BIN") or DEFAULT_PI_BIN
+        self.pi_bin = pi_bin or os.environ.get("PI_BIN") or _default_pi_bin()
         self.budget = budget or BudgetConfig()
 
     # ------------------------------------------------------------------ setup
@@ -234,20 +246,27 @@ class PiDriver:
         tools = ",".join([BUILTIN_TOOL_ALLOWLIST, *TOOL_NAMES])
         return [
             str(self.pi_bin),
-            "--mode", "rpc",
-            "--model", self.model,
-            "--session-dir", str(self.root / ".pi" / "sessions"),
-            "--name", name,
+            "--mode",
+            "rpc",
+            "--model",
+            self.model,
+            "--session-dir",
+            str(self.root / ".pi" / "sessions"),
+            "--name",
+            name,
             # Global/user extensions (e.g. subagent, autoresearch) can block the
             # session with extension_ui_request dialogs in headless runs. Discovery
             # off; load ONLY our extension by explicit path.
             "--no-extensions",
-            "-e", str(self.root / ".pi" / "extensions" / "opendraft-tools.ts"),
-            "--tools", tools,
+            "-e",
+            str(self.root / ".pi" / "extensions" / "opendraft-tools.ts"),
+            "--tools",
+            tools,
             # Defense in depth: the PoC showed bash executing despite the allowlist
             # (pi --tools semantics don't hard-restrict the shell tool). Deny it too;
             # a writing agent has no business spawning shells.
-            "--exclude-tools", "bash,powershell",
+            "--exclude-tools",
+            "bash,powershell",
         ]
 
     def _spawn(self, argv: List[str], env: Dict[str, str]) -> subprocess.Popen:
@@ -367,10 +386,12 @@ class PiDriver:
             stats["usage"] = state.usage
         stats["turns"] = state.turns
         spent = stats.get("cost")
-        spent_s = f"{float(spent):.4f}" if isinstance(spent, (int, float)) \
-            and not isinstance(spent, bool) else "unknown"
-        journal.log("session_end",
-                    f"session={name} reason={state.reason} spent={spent_s}")
+        spent_s = (
+            f"{float(spent):.4f}"
+            if isinstance(spent, (int, float)) and not isinstance(spent, bool)
+            else "unknown"
+        )
+        journal.log("session_end", f"session={name} reason={state.reason} spent={spent_s}")
         return DriverResult(
             ok=ok,
             reason=state.reason,

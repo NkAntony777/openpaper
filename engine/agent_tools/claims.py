@@ -14,9 +14,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import requests
-
 from agent_tools import registry
-from agent_tools.envelope import ok, fail
+from agent_tools.envelope import fail, ok
 
 PROBE_URL = "https://generativelanguage.googleapis.com/"
 PROBE_TIMEOUT = 5
@@ -27,7 +26,8 @@ def _quiet_stdout():
     """Keep stdout JSON-envelope-clean: redirect prints and detach stdout log handlers."""
     root_logger = logging.getLogger()
     stdout_handlers = [
-        h for h in list(root_logger.handlers)
+        h
+        for h in list(root_logger.handlers)
         if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stdout
     ]
     for h in stdout_handlers:
@@ -38,6 +38,7 @@ def _quiet_stdout():
     finally:
         for h in stdout_handlers:
             root_logger.addHandler(h)
+
 
 DESCRIPTION = (
     "Fact-check draft claims against live web evidence. Each claim gets a verdict: "
@@ -63,7 +64,7 @@ INPUT_SCHEMA = {
                 "required": ["claim"],
             },
             "description": "Claims to verify (each must have a non-empty 'claim'; "
-                           "'section'/'line' are optional labels echoed back).",
+            "'section'/'line' are optional labels echoed back).",
         },
         "max_workers": {
             "type": "integer",
@@ -88,11 +89,13 @@ def verdicts_to_find_replace(verdicts: List[Dict]) -> List[Dict]:
             continue
         if not isinstance(replace, str):
             continue
-        pairs.append({
-            "find": find,
-            "replace": replace,
-            "claim": v.get("claim") or "",
-        })
+        pairs.append(
+            {
+                "find": find,
+                "replace": replace,
+                "claim": v.get("claim") or "",
+            }
+        )
     return pairs
 
 
@@ -117,11 +120,13 @@ def run(args: Dict, root: Path) -> Dict:
         claim_text = item.get("claim")
         if not isinstance(claim_text, str) or not claim_text.strip():
             return fail(f"claims[{i}] is missing a non-empty 'claim' field")
-        normalized.append({
-            "claim": claim_text.strip(),
-            "section": item.get("section", ""),
-            "line": item.get("line", ""),
-        })
+        normalized.append(
+            {
+                "claim": claim_text.strip(),
+                "section": item.get("section", ""),
+                "line": item.get("line", ""),
+            }
+        )
 
     try:
         max_workers = int(args.get("max_workers") or 10)
@@ -130,6 +135,7 @@ def run(args: Dict, root: Path) -> Dict:
     max_workers = max(1, min(max_workers, 20))
 
     from config import get_config
+
     config = get_config()
     api_key = config.google_api_key
     if not api_key:
@@ -146,13 +152,15 @@ def run(args: Dict, root: Path) -> Dict:
         return fail(f"verify_claims failed: {net_error}", is_retryable=True)
 
     try:
-        from utils.agent_runner import setup_model
+        from utils.llm_runtime import setup_model
+
         model = setup_model()
     except Exception as e:
         return fail(f"could not set up judge model: {type(e).__name__}: {e}", is_retryable=False)
 
     try:
         from utils.factcheck_verifier import FactCheckVerifier
+
         with _quiet_stdout():
             verifier = FactCheckVerifier(api_key=api_key, model=model)
             verdicts = verifier.verify_claims(normalized, max_workers=max_workers)
@@ -162,17 +170,21 @@ def run(args: Dict, root: Path) -> Dict:
             is_retryable=True,
         )
 
-    return ok({
-        "verdicts": verdicts,
-        "count": len(verdicts),
-        "contradicted": sum(1 for v in verdicts if v.get("verdict") == "CONTRADICTED"),
-        "find_replace": verdicts_to_find_replace(verdicts),
-    })
+    return ok(
+        {
+            "verdicts": verdicts,
+            "count": len(verdicts),
+            "contradicted": sum(1 for v in verdicts if v.get("verdict") == "CONTRADICTED"),
+            "find_replace": verdicts_to_find_replace(verdicts),
+        }
+    )
 
 
-registry.register(registry.ToolSpec(
-    name="verify_claims",
-    description=DESCRIPTION,
-    input_schema=INPUT_SCHEMA,
-    func=run,
-))
+registry.register(
+    registry.ToolSpec(
+        name="verify_claims",
+        description=DESCRIPTION,
+        input_schema=INPUT_SCHEMA,
+        func=run,
+    )
+)

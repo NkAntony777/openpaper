@@ -13,12 +13,13 @@ Run with: pytest tests/test_live_api_integration.py -v
 Skip with: pytest tests/ --ignore=tests/test_live_api_integration.py
 """
 
+import json
 import os
 import sys
-import json
 import time
-import pytest
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
@@ -31,12 +32,12 @@ if not GEMINI_API_KEY:
         try:
             config = json.loads(config_file.read_text())
             GEMINI_API_KEY = config.get("google_api_key")
-        except:
+        except Exception:
             pass
 
 pytestmark = pytest.mark.skipif(
     not GEMINI_API_KEY,
-    reason="No GOOGLE_API_KEY or GEMINI_API_KEY - skipping live API tests"
+    reason="No GOOGLE_API_KEY or GEMINI_API_KEY - skipping live API tests",
 )
 
 
@@ -62,7 +63,9 @@ class TestLiveAPIBasic:
 
     def test_api_connection(self, gemini_model):
         """Verify we can make a basic API call."""
-        response = gemini_model.generate_content("Say 'API connection successful' and nothing else.")
+        response = gemini_model.generate_content(
+            "Say 'API connection successful' and nothing else."
+        )
         assert response.text is not None
         assert len(response.text) > 0
 
@@ -76,7 +79,9 @@ class TestLiveAPIBasic:
 
         assert len(text) > 100, f"Response too short: {len(text)} chars"
         # Should contain academic-style content
-        assert any(word in text.lower() for word in ["machine", "learning", "data", "model", "algorithm"])
+        assert any(
+            word in text.lower() for word in ["machine", "learning", "data", "model", "algorithm"]
+        )
 
 
 class TestLiveCheckpointWithRealContent:
@@ -84,8 +89,8 @@ class TestLiveCheckpointWithRealContent:
 
     def test_checkpoint_preserves_llm_output(self, gemini_model, tmp_path):
         """Verify checkpoint correctly saves and restores real LLM output."""
-        from utils.checkpoint import save_checkpoint, load_checkpoint, restore_context
         from phases.context import DraftContext
+        from utils.checkpoint import load_checkpoint, restore_context, save_checkpoint
 
         # Generate real content
         prompt = """Write an academic introduction paragraph (100-150 words) about
@@ -99,7 +104,7 @@ class TestLiveCheckpointWithRealContent:
         ctx.topic = "AI in Healthcare"
         ctx.language = "en"
         ctx.academic_level = "research_paper"
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         ctx.intro_output = original_text
         ctx.scout_output = f"Research completed at {time.time()}"
 
@@ -118,8 +123,8 @@ class TestLiveCheckpointWithRealContent:
 
     def test_multiple_llm_outputs_checkpoint(self, gemini_model, tmp_path):
         """Test checkpoint with multiple LLM-generated sections."""
-        from utils.checkpoint import save_checkpoint, load_checkpoint, restore_context
         from phases.context import DraftContext
+        from utils.checkpoint import load_checkpoint, restore_context, save_checkpoint
 
         # Generate multiple sections
         sections = {}
@@ -138,7 +143,7 @@ class TestLiveCheckpointWithRealContent:
         # Create context
         ctx = DraftContext()
         ctx.topic = "Climate Change Policy"
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         ctx.intro_output = sections["intro"]
         ctx.methodology_output = sections["methods"]
         ctx.conclusion_output = sections["conclusion"]
@@ -161,8 +166,8 @@ class TestLiveQualityGate:
 
     def test_quality_gate_scores_real_content(self, gemini_model):
         """Verify quality gate can score real LLM output."""
-        from utils.quality_gate import score_draft_quality
         from phases.context import DraftContext
+        from utils.quality_gate import score_draft_quality
 
         # Generate substantial content
         intro_prompt = """Write an academic introduction (200-300 words) about renewable energy.
@@ -183,7 +188,7 @@ class TestLiveQualityGate:
 
         ctx = DraftContext()
         ctx.academic_level = "research_paper"
-        ctx.word_targets = {'min_citations': 8}
+        ctx.word_targets = {"min_citations": 8}
 
         # Generate each section
         ctx.intro_output = gemini_model.generate_content(intro_prompt).text
@@ -217,8 +222,8 @@ class TestLiveMiniPipeline:
 
     def test_research_to_checkpoint(self, gemini_model, tmp_path):
         """Run research-like phase and checkpoint the result."""
-        from utils.checkpoint import save_checkpoint, load_checkpoint
         from phases.context import DraftContext
+        from utils.checkpoint import load_checkpoint, save_checkpoint
 
         # Simulate research phase output
         research_prompt = """You are a research assistant. For the topic "Machine Learning in Finance":
@@ -235,7 +240,7 @@ class TestLiveMiniPipeline:
         ctx.topic = "Machine Learning in Finance"
         ctx.language = "en"
         ctx.academic_level = "master"
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         ctx.scout_output = response.text
 
         # Checkpoint after "research"
@@ -244,17 +249,25 @@ class TestLiveMiniPipeline:
         # Verify checkpoint
         data, phase = load_checkpoint(tmp_path / "checkpoint.json")
         assert phase == "research"
-        assert "Machine Learning" in data["scout_output"] or "machine learning" in data["scout_output"].lower()
+        assert (
+            "Machine Learning" in data["scout_output"]
+            or "machine learning" in data["scout_output"].lower()
+        )
 
     def test_resume_continues_from_checkpoint(self, gemini_model, tmp_path):
         """Test that resume loads checkpoint and continues correctly."""
-        from utils.checkpoint import save_checkpoint, load_checkpoint, restore_context, get_next_phase
         from phases.context import DraftContext
+        from utils.checkpoint import (
+            get_next_phase,
+            load_checkpoint,
+            restore_context,
+            save_checkpoint,
+        )
 
         # Phase 1: Research
         ctx = DraftContext()
         ctx.topic = "Quantum Computing Applications"
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         ctx.scout_output = gemini_model.generate_content(
             "List 3 applications of quantum computing in one sentence each."
         ).text
@@ -300,8 +313,8 @@ class TestLiveEdgeCases:
 
     def test_llm_unicode_output(self, gemini_model, tmp_path):
         """Test checkpoint handles LLM output with unicode."""
-        from utils.checkpoint import save_checkpoint, load_checkpoint, restore_context
         from phases.context import DraftContext
+        from utils.checkpoint import load_checkpoint, restore_context, save_checkpoint
 
         prompt = """Write one sentence in each language about AI:
         1. English
@@ -314,7 +327,7 @@ class TestLiveEdgeCases:
 
         ctx = DraftContext()
         ctx.topic = "Multilingual AI"
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         ctx.scout_output = response.text
 
         save_checkpoint(ctx, "research", tmp_path)
@@ -330,8 +343,8 @@ class TestLiveEdgeCases:
 
     def test_llm_long_output(self, gemini_model, tmp_path):
         """Test checkpoint handles longer LLM output."""
-        from utils.checkpoint import save_checkpoint, load_checkpoint, restore_context
         from phases.context import DraftContext
+        from utils.checkpoint import load_checkpoint, save_checkpoint
 
         prompt = """Write a detailed 500-word essay about the history of artificial intelligence.
         Include the following sections:
@@ -346,7 +359,7 @@ class TestLiveEdgeCases:
 
         ctx = DraftContext()
         ctx.topic = "History of AI"
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         ctx.intro_output = response.text
 
         save_checkpoint(ctx, "compose", tmp_path)
@@ -366,8 +379,13 @@ class TestLiveResumeWorkflow:
         This is the gold standard test: real API calls, real checkpoints,
         real resume logic.
         """
-        from utils.checkpoint import save_checkpoint, load_checkpoint, restore_context, get_next_phase, PHASES
         from phases.context import DraftContext
+        from utils.checkpoint import (
+            PHASES,
+            load_checkpoint,
+            restore_context,
+            save_checkpoint,
+        )
 
         topic = "Impact of Social Media on Mental Health"
 
@@ -375,7 +393,7 @@ class TestLiveResumeWorkflow:
         completed_phases = []
 
         for target_phase_idx in range(4):  # Test interrupt at first 4 phases
-            target_phase = PHASES[target_phase_idx]
+            _target_phase = PHASES[target_phase_idx]
 
             # Start fresh or resume
             checkpoint_path = tmp_path / "checkpoint.json"
@@ -390,8 +408,8 @@ class TestLiveResumeWorkflow:
                 ctx.topic = topic
                 ctx.language = "en"
                 ctx.academic_level = "research_paper"
-                ctx.word_targets = {'min_citations': 5}
-                ctx.folders = {'root': tmp_path}
+                ctx.word_targets = {"min_citations": 5}
+                ctx.folders = {"root": tmp_path}
                 start_idx = 0
 
             # Run one phase

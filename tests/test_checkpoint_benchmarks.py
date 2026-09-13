@@ -12,23 +12,21 @@ Performance Targets:
 - Large context (PhD dissertation): save < 500ms, load < 200ms
 """
 
-import time
-import json
-import pytest
 import statistics
-from pathlib import Path
-from typing import List, Tuple
-
 import sys
+import time
+from pathlib import Path
+from typing import Tuple
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
+from phases.context import DraftContext
 from utils.checkpoint import (
-    save_checkpoint,
     load_checkpoint,
     restore_context,
+    save_checkpoint,
 )
 from utils.citation_database import Citation
-from phases.context import DraftContext
 
 
 def _time_operation(func, *args, **kwargs) -> Tuple[float, any]:
@@ -102,7 +100,7 @@ class TestSaveBenchmarks:
     def test_save_small_context(self, tmp_path):
         """Benchmark: Save small research paper context (< 50ms)."""
         ctx = _create_context_with_size("research_paper", word_multiplier=1, citation_count=10)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
 
         # Warm up
         save_checkpoint(ctx, "compose", tmp_path)
@@ -124,7 +122,7 @@ class TestSaveBenchmarks:
     def test_save_medium_context(self, tmp_path):
         """Benchmark: Save medium master thesis context (< 100ms)."""
         ctx = _create_context_with_size("master", word_multiplier=5, citation_count=50)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
 
         # Benchmark
         times = []
@@ -143,7 +141,7 @@ class TestSaveBenchmarks:
     def test_save_large_context(self, tmp_path):
         """Benchmark: Save large PhD dissertation context (< 500ms)."""
         ctx = _create_context_with_size("phd", word_multiplier=20, citation_count=150)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
 
         # Benchmark
         times = []
@@ -166,7 +164,7 @@ class TestLoadBenchmarks:
     def test_load_small_context(self, tmp_path):
         """Benchmark: Load small research paper context (< 20ms)."""
         ctx = _create_context_with_size("research_paper", word_multiplier=1, citation_count=10)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         save_checkpoint(ctx, "compose", tmp_path)
 
         checkpoint_path = tmp_path / "checkpoint.json"
@@ -188,7 +186,7 @@ class TestLoadBenchmarks:
     def test_load_medium_context(self, tmp_path):
         """Benchmark: Load medium master thesis context (< 50ms)."""
         ctx = _create_context_with_size("master", word_multiplier=5, citation_count=50)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         save_checkpoint(ctx, "compose", tmp_path)
 
         checkpoint_path = tmp_path / "checkpoint.json"
@@ -210,7 +208,7 @@ class TestLoadBenchmarks:
     def test_load_large_context(self, tmp_path):
         """Benchmark: Load large PhD dissertation context (< 200ms)."""
         ctx = _create_context_with_size("phd", word_multiplier=20, citation_count=150)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         save_checkpoint(ctx, "compose", tmp_path)
 
         checkpoint_path = tmp_path / "checkpoint.json"
@@ -236,7 +234,7 @@ class TestRestoreBenchmarks:
     def test_restore_small_context(self, tmp_path):
         """Benchmark: Restore small context (< 10ms)."""
         ctx = _create_context_with_size("research_paper", word_multiplier=1, citation_count=10)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         save_checkpoint(ctx, "compose", tmp_path)
 
         data, _ = load_checkpoint(tmp_path / "checkpoint.json")
@@ -257,7 +255,7 @@ class TestRestoreBenchmarks:
     def test_restore_large_context(self, tmp_path):
         """Benchmark: Restore large context (< 50ms)."""
         ctx = _create_context_with_size("phd", word_multiplier=20, citation_count=150)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         save_checkpoint(ctx, "compose", tmp_path)
 
         data, _ = load_checkpoint(tmp_path / "checkpoint.json")
@@ -282,7 +280,7 @@ class TestFileSizeBenchmarks:
     def test_file_size_small(self, tmp_path):
         """Verify small context checkpoint file size."""
         ctx = _create_context_with_size("research_paper", word_multiplier=1, citation_count=10)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         save_checkpoint(ctx, "compose", tmp_path)
 
         size_kb = (tmp_path / "checkpoint.json").stat().st_size / 1024
@@ -295,7 +293,7 @@ class TestFileSizeBenchmarks:
     def test_file_size_medium(self, tmp_path):
         """Verify medium context checkpoint file size."""
         ctx = _create_context_with_size("master", word_multiplier=5, citation_count=50)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         save_checkpoint(ctx, "compose", tmp_path)
 
         size_kb = (tmp_path / "checkpoint.json").stat().st_size / 1024
@@ -308,7 +306,7 @@ class TestFileSizeBenchmarks:
     def test_file_size_large(self, tmp_path):
         """Verify large context checkpoint file size."""
         ctx = _create_context_with_size("phd", word_multiplier=20, citation_count=150)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
         save_checkpoint(ctx, "compose", tmp_path)
 
         size_kb = (tmp_path / "checkpoint.json").stat().st_size / 1024
@@ -325,7 +323,7 @@ class TestRoundtripBenchmarks:
     def test_full_roundtrip_small(self, tmp_path):
         """Benchmark: Full roundtrip for small context (< 80ms)."""
         ctx = _create_context_with_size("research_paper", word_multiplier=1, citation_count=10)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
 
         # Benchmark full cycle
         times = []
@@ -349,7 +347,7 @@ class TestRoundtripBenchmarks:
     def test_full_roundtrip_large(self, tmp_path):
         """Benchmark: Full roundtrip for large context (< 750ms)."""
         ctx = _create_context_with_size("phd", word_multiplier=20, citation_count=150)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
 
         # Benchmark full cycle
         times = []
@@ -373,7 +371,7 @@ class TestRoundtripBenchmarks:
     def test_data_integrity_after_roundtrip(self, tmp_path):
         """Verify data integrity is preserved after roundtrip."""
         ctx = _create_context_with_size("master", word_multiplier=5, citation_count=50)
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
 
         # Save
         save_checkpoint(ctx, "compose", tmp_path)

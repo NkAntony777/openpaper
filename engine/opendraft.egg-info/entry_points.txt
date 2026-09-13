@@ -1,3 +1,0 @@
-[console_scripts]
-draft-ai = opendraft.cli:main
-opendraft = opendraft.cli:main

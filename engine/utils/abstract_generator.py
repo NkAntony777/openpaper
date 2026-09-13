@@ -13,12 +13,13 @@ DRY Principle:
 - Centralized logic for abstract generation and replacement
 """
 
-import re
 import logging
+import re
 from pathlib import Path
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
 
 def detect_draft_language(draft_content: str) -> str:
     """
@@ -32,18 +33,18 @@ def detect_draft_language(draft_content: str) -> str:
     """
     # Check for German indicators
     german_indicators = [
-        '## Zusammenfassung',
-        '## Inhaltsverzeichnis',
-        '## Einleitung',
-        '## Fazit',
-        'Schlüsselwörter:'
+        "## Zusammenfassung",
+        "## Inhaltsverzeichnis",
+        "## Einleitung",
+        "## Fazit",
+        "Schlüsselwörter:",
     ]
 
     if any(indicator in draft_content for indicator in german_indicators):
-        return 'german'
+        return "german"
 
     # Default to English
-    return 'english'
+    return "english"
 
 
 def has_placeholder_abstract(draft_content: str) -> bool:
@@ -57,9 +58,9 @@ def has_placeholder_abstract(draft_content: str) -> bool:
         True if placeholder found, False if real abstract exists
     """
     placeholders = [
-        '[Abstract will be generated',
-        '[Zusammenfassung wird während der PDF-Generierung',
-        '[Zusammenfassung wird automatisch'
+        "[Abstract will be generated",
+        "[Zusammenfassung wird während der PDF-Generierung",
+        "[Zusammenfassung wird automatisch",
     ]
 
     return any(placeholder in draft_content for placeholder in placeholders)
@@ -78,20 +79,22 @@ def extract_draft_for_abstract(draft_content: str, max_chars: int = 15000) -> st
     """
     # Skip frontmatter
     content_start = 0
-    if draft_content.startswith('---'):
-        end_frontmatter = draft_content.find('---', 3)
+    if draft_content.startswith("---"):
+        end_frontmatter = draft_content.find("---", 3)
         if end_frontmatter != -1:
             content_start = end_frontmatter + 3
 
     # Skip TOC and abstract sections
-    toc_match = re.search(r'## (Table of Contents|Inhaltsverzeichnis)', draft_content[content_start:])
+    toc_match = re.search(
+        r"## (Table of Contents|Inhaltsverzeichnis)", draft_content[content_start:]
+    )
     if toc_match:
         content_start += toc_match.end()
 
-    abstract_match = re.search(r'## (Abstract|Zusammenfassung)', draft_content[content_start:])
+    abstract_match = re.search(r"## (Abstract|Zusammenfassung)", draft_content[content_start:])
     if abstract_match:
         abstract_start = content_start + abstract_match.start()
-        newpage_match = re.search(r'\\newpage', draft_content[abstract_start:])
+        newpage_match = re.search(r"\\newpage", draft_content[abstract_start:])
         if newpage_match:
             content_start = abstract_start + newpage_match.end()
 
@@ -102,8 +105,8 @@ def extract_draft_for_abstract(draft_content: str, max_chars: int = 15000) -> st
     # Try to find conclusion
     conclusion = ""
     conc_patterns = [
-        r'# (Conclusion|Fazit|Schlussfolgerung)\n+(.*?)(?=\n---|$)',
-        r'## (Conclusion|Fazit|Schlussfolgerung)\n+(.*?)(?=\n---|$)'
+        r"# (Conclusion|Fazit|Schlussfolgerung)\n+(.*?)(?=\n---|$)",
+        r"## (Conclusion|Fazit|Schlussfolgerung)\n+(.*?)(?=\n---|$)",
     ]
 
     for pattern in conc_patterns:
@@ -114,10 +117,12 @@ def extract_draft_for_abstract(draft_content: str, max_chars: int = 15000) -> st
 
     if not conclusion:
         # Fall back to last 7500 chars before references
-        refs_pattern = r'\n---\n+\d+\.'
+        refs_pattern = r"\n---\n+\d+\."
         refs_match = re.search(refs_pattern, draft_content)
         if refs_match:
-            conclusion = draft_content[max(0, refs_match.start() - 7500):refs_match.start()].strip()
+            conclusion = draft_content[
+                max(0, refs_match.start() - 7500) : refs_match.start()
+            ].strip()
         else:
             conclusion = draft_content[-7500:].strip()
 
@@ -131,7 +136,9 @@ def extract_draft_for_abstract(draft_content: str, max_chars: int = 15000) -> st
     return context
 
 
-def replace_placeholder_with_abstract(draft_content: str, generated_abstract: str, language: str = 'english') -> str:
+def replace_placeholder_with_abstract(
+    draft_content: str, generated_abstract: str, language: str = "english"
+) -> str:
     """
     Replace placeholder abstract with generated content.
 
@@ -145,23 +152,29 @@ def replace_placeholder_with_abstract(draft_content: str, generated_abstract: st
     """
     # Clean up the generated abstract (remove any meta-comments)
     generated_abstract = re.sub(
-        r'^(Here is the abstract|Hier ist die Zusammenfassung).*?\n+',
-        '',
+        r"^(Here is the abstract|Hier ist die Zusammenfassung).*?\n+",
+        "",
         generated_abstract,
-        flags=re.IGNORECASE
+        flags=re.IGNORECASE,
     ).strip()
 
     # Define placeholder patterns (handle optional leading whitespace from indented templates)
-    if language == 'german':
-        placeholder_pattern = r'^\s*## Zusammenfassung\n+\s*\[Zusammenfassung wird.*?\]\n+\s*\\\\?newpage'
+    if language == "german":
+        placeholder_pattern = (
+            r"^\s*## Zusammenfassung\n+\s*\[Zusammenfassung wird.*?\]\n+\s*\\\\?newpage"
+        )
         replacement = f"## Zusammenfassung\n\n{generated_abstract}\n\n\\\\newpage"
     else:
         # Match abstract placeholder with optional whitespace, brackets, and newpage
-        placeholder_pattern = r'^\s*## Abstract\n+\s*\[Abstract will be generated.*?\]\n*(?:---?\n*|\s*\\\\?newpage)?'
+        placeholder_pattern = (
+            r"^\s*## Abstract\n+\s*\[Abstract will be generated.*?\]\n*(?:---?\n*|\s*\\\\?newpage)?"
+        )
         replacement = f"## Abstract\n\n{generated_abstract}\n\n\\\\newpage"
 
     # Replace placeholder (MULTILINE to match ^ at line start, DOTALL to match . across lines)
-    updated_content = re.sub(placeholder_pattern, replacement, draft_content, flags=re.DOTALL | re.MULTILINE)
+    updated_content = re.sub(
+        placeholder_pattern, replacement, draft_content, flags=re.DOTALL | re.MULTILINE
+    )
 
     # Verify replacement happened
     if updated_content == draft_content:
@@ -170,14 +183,26 @@ def replace_placeholder_with_abstract(draft_content: str, generated_abstract: st
         # Try alternative patterns (account for optional leading whitespace from indented templates)
         alt_patterns = [
             # Match with \newpage (escaped in markdown as \\newpage) - with optional whitespace
-            (r'^\s*## Abstract\n+\s*\[.*?\]\n+\s*\\\\newpage', f"## Abstract\n\n{generated_abstract}\n\n\\\\newpage"),
-            (r'^\s*## Zusammenfassung\n+\s*\[.*?\]\n+\s*\\\\newpage', f"## Zusammenfassung\n\n{generated_abstract}\n\n\\\\newpage"),
+            (
+                r"^\s*## Abstract\n+\s*\[.*?\]\n+\s*\\\\newpage",
+                f"## Abstract\n\n{generated_abstract}\n\n\\\\newpage",
+            ),
+            (
+                r"^\s*## Zusammenfassung\n+\s*\[.*?\]\n+\s*\\\\newpage",
+                f"## Zusammenfassung\n\n{generated_abstract}\n\n\\\\newpage",
+            ),
             # Match with literal \newpage - with optional whitespace
-            (r'^\s*## Abstract\n+\s*\[.*?\]\n+\s*\\newpage', f"## Abstract\n\n{generated_abstract}\n\n\\newpage"),
-            (r'^\s*## Zusammenfassung\n+\s*\[.*?\]\n+\s*\\newpage', f"## Zusammenfassung\n\n{generated_abstract}\n\n\\newpage"),
+            (
+                r"^\s*## Abstract\n+\s*\[.*?\]\n+\s*\\newpage",
+                f"## Abstract\n\n{generated_abstract}\n\n\\newpage",
+            ),
+            (
+                r"^\s*## Zusammenfassung\n+\s*\[.*?\]\n+\s*\\newpage",
+                f"## Zusammenfassung\n\n{generated_abstract}\n\n\\newpage",
+            ),
             # Match without newpage - with optional whitespace
-            (r'^\s*## Abstract\n+\s*\[.*?\]', f"## Abstract\n\n{generated_abstract}"),
-            (r'^\s*## Zusammenfassung\n+\s*\[.*?\]', f"## Zusammenfassung\n\n{generated_abstract}"),
+            (r"^\s*## Abstract\n+\s*\[.*?\]", f"## Abstract\n\n{generated_abstract}"),
+            (r"^\s*## Zusammenfassung\n+\s*\[.*?\]", f"## Zusammenfassung\n\n{generated_abstract}"),
         ]
 
         for pattern, repl in alt_patterns:
@@ -190,11 +215,7 @@ def replace_placeholder_with_abstract(draft_content: str, generated_abstract: st
 
 
 def generate_abstract_for_draft(
-    draft_path: Path,
-    model,
-    run_agent_func,
-    output_dir: Path,
-    verbose: bool = True
+    draft_path: Path, model, run_agent_func, output_dir: Path, verbose: bool = True
 ) -> Tuple[bool, Optional[str]]:
     """
     Generate and integrate abstract for a draft.
@@ -217,7 +238,7 @@ def generate_abstract_for_draft(
         Tuple of (success: bool, updated_content: str or None)
     """
     # Read draft
-    with open(draft_path, 'r', encoding='utf-8') as f:
+    with open(draft_path, "r", encoding="utf-8") as f:
         draft_content = f.read()
 
     # Detect language
@@ -261,7 +282,7 @@ def generate_abstract_for_draft(
             name="Abstract Generator (Agent #6.5)",
             prompt_path="prompts/06_enhance/abstract_generator.md",
             user_input=user_input,
-            save_to=output_dir / "16_abstract_generated.md"
+            save_to=output_dir / "16_abstract_generated.md",
         )
 
         if not generated_abstract:
@@ -277,10 +298,12 @@ def generate_abstract_for_draft(
         # Warn if word count is outside target range
         if word_count < 200 or word_count > 350:
             if verbose:
-                print(f"⚠️  WARNING: Word count outside target range (250-300)")
+                print("⚠️  WARNING: Word count outside target range (250-300)")
 
         # Replace placeholder with generated abstract
-        updated_content = replace_placeholder_with_abstract(draft_content, generated_abstract, language)
+        updated_content = replace_placeholder_with_abstract(
+            draft_content, generated_abstract, language
+        )
 
         if updated_content == draft_content:
             if verbose:
@@ -288,7 +311,7 @@ def generate_abstract_for_draft(
             return False, None
 
         # Save updated draft
-        with open(draft_path, 'w', encoding='utf-8') as f:
+        with open(draft_path, "w", encoding="utf-8") as f:
             f.write(updated_content)
 
         if verbose:
@@ -300,5 +323,3 @@ def generate_abstract_for_draft(
         if verbose:
             print(f"❌ ERROR generating abstract: {e}")
         return False, None
-
-

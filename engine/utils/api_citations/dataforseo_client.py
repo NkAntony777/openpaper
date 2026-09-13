@@ -16,12 +16,13 @@ Requirements:
 - DATAFORSEO_PASSWORD environment variable
 """
 
+import base64
 import os
 import re
+from typing import Any, Dict, List, Optional
+from urllib.parse import unquote, urlparse
+
 import requests
-import base64
-from typing import Dict, Any, Optional, List
-from urllib.parse import urlparse, unquote
 
 
 class DataForSEOClient:
@@ -49,8 +50,8 @@ class DataForSEOClient:
             location_code: Google location code (2840 = USA)
             forbidden_domains: List of domains to skip
         """
-        self.login = login or os.environ.get('DATAFORSEO_LOGIN')
-        self.password = password or os.environ.get('DATAFORSEO_PASSWORD')
+        self.login = login or os.environ.get("DATAFORSEO_LOGIN")
+        self.password = password or os.environ.get("DATAFORSEO_PASSWORD")
 
         if not self.login or not self.password:
             raise ValueError(
@@ -60,38 +61,38 @@ class DataForSEOClient:
 
         self.timeout = timeout
         self.location_code = location_code
-        self.endpoint = 'https://api.dataforseo.com/v3/serp/google/organic/live/advanced'
+        self.endpoint = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
 
         # Build auth header
         credentials = f"{self.login}:{self.password}"
-        self.auth_header = base64.b64encode(credentials.encode()).decode('ascii')
+        self.auth_header = base64.b64encode(credentials.encode()).decode("ascii")
 
         self.headers = {
-            'Authorization': f'Basic {self.auth_header}',
-            'Content-Type': 'application/json',
+            "Authorization": f"Basic {self.auth_header}",
+            "Content-Type": "application/json",
         }
 
         # Domain filtering
         self.forbidden_domains = forbidden_domains or [
-            'chegg.com',
-            'coursehero.com',
-            'studypool.com',
-            'academia.edu',  # Often paywalled
+            "chegg.com",
+            "coursehero.com",
+            "studypool.com",
+            "academia.edu",  # Often paywalled
         ]
 
         # Academic URL patterns (for source type detection)
         self.academic_patterns = [
-            r'\.edu/',
-            r'doi\.org/',
-            r'pubmed\.ncbi\.nlm\.nih\.gov/',
-            r'arxiv\.org/',
-            r'scholar\.google',
-            r'jstor\.org/',
-            r'springer\.com/',
-            r'sciencedirect\.com/',
-            r'wiley\.com/',
-            r'nature\.com/',
-            r'ieee\.org/',
+            r"\.edu/",
+            r"doi\.org/",
+            r"pubmed\.ncbi\.nlm\.nih\.gov/",
+            r"arxiv\.org/",
+            r"scholar\.google",
+            r"jstor\.org/",
+            r"springer\.com/",
+            r"sciencedirect\.com/",
+            r"wiley\.com/",
+            r"nature\.com/",
+            r"ieee\.org/",
         ]
 
     def search_paper(self, query: str, num_results: int = 10) -> Optional[Dict[str, Any]]:
@@ -115,7 +116,7 @@ class DataForSEOClient:
 
             # Find first valid academic/industry source
             for result in results:
-                url = result.get('url', '')
+                url = result.get("url", "")
 
                 # Skip forbidden domains
                 if self._is_forbidden_domain(url):
@@ -144,19 +145,18 @@ class DataForSEOClient:
         Returns:
             List of search result dicts with title, url, snippet, position
         """
-        payload = [{
-            "keyword": query,
-            "location_code": self.location_code,
-            "language_code": "en",
-            "depth": depth,
-        }]
+        payload = [
+            {
+                "keyword": query,
+                "location_code": self.location_code,
+                "language_code": "en",
+                "depth": depth,
+            }
+        ]
 
         try:
             response = requests.post(
-                self.endpoint,
-                headers=self.headers,
-                json=payload,
-                timeout=self.timeout
+                self.endpoint, headers=self.headers, json=payload, timeout=self.timeout
             )
 
             if response.status_code != 200:
@@ -167,26 +167,28 @@ class DataForSEOClient:
 
             # Extract organic search results
             results = []
-            if data.get('tasks'):
-                for task in data['tasks']:
-                    if task.get('result'):
-                        for result_item in task['result']:
-                            if result_item.get('items'):
-                                for item in result_item['items']:
-                                    if item.get('type') == 'organic':
-                                        results.append({
-                                            'title': item.get('title', ''),
-                                            'url': item.get('url', ''),
-                                            'snippet': item.get('description', ''),
-                                            'position': item.get('rank_absolute', 0),
-                                        })
+            if data.get("tasks"):
+                for task in data["tasks"]:
+                    if task.get("result"):
+                        for result_item in task["result"]:
+                            if result_item.get("items"):
+                                for item in result_item["items"]:
+                                    if item.get("type") == "organic":
+                                        results.append(
+                                            {
+                                                "title": item.get("title", ""),
+                                                "url": item.get("url", ""),
+                                                "snippet": item.get("description", ""),
+                                                "position": item.get("rank_absolute", 0),
+                                            }
+                                        )
 
             return results
 
         except requests.Timeout:
-            raise Exception(f"DataForSEO request timeout after {self.timeout}s")
+            raise Exception(f"DataForSEO request timeout after {self.timeout}s") from None
         except requests.RequestException as e:
-            raise Exception(f"DataForSEO request failed: {e}")
+            raise Exception(f"DataForSEO request failed: {e}") from e
 
     def _build_citation_from_serp(self, serp_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
@@ -198,9 +200,9 @@ class DataForSEOClient:
         Returns:
             Citation dict or None if invalid
         """
-        url = (serp_result.get('url') or '').strip()
-        title = (serp_result.get('title') or '').strip()
-        snippet = (serp_result.get('snippet') or '').strip()
+        url = (serp_result.get("url") or "").strip()
+        title = (serp_result.get("title") or "").strip()
+        snippet = (serp_result.get("snippet") or "").strip()
 
         if not url or not title:
             return None
@@ -218,13 +220,13 @@ class DataForSEOClient:
         authors = self._extract_authors_from_snippet(snippet)
 
         citation = {
-            'title': title,
-            'authors': authors,
-            'year': year,
-            'url': url,
-            'doi': doi,
-            'source_type': source_type,
-            'abstract': snippet[:500] if snippet else None,  # First 500 chars
+            "title": title,
+            "authors": authors,
+            "year": year,
+            "url": url,
+            "doi": doi,
+            "source_type": source_type,
+            "abstract": snippet[:500] if snippet else None,  # First 500 chars
         }
 
         return citation
@@ -243,31 +245,31 @@ class DataForSEOClient:
 
         for pattern in self.academic_patterns:
             if re.search(pattern, url_lower):
-                return 'academic'
+                return "academic"
 
         # Industry sources (McKinsey, WHO, Gartner, etc.)
         industry_patterns = [
-            'mckinsey.com',
-            'who.int',
-            'gartner.com',
-            'forrester.com',
-            'accenture.com',
-            'deloitte.com',
-            'pwc.com',
-            'bcg.com',
-            'oecd.org',
-            'worldbank.org',
+            "mckinsey.com",
+            "who.int",
+            "gartner.com",
+            "forrester.com",
+            "accenture.com",
+            "deloitte.com",
+            "pwc.com",
+            "bcg.com",
+            "oecd.org",
+            "worldbank.org",
         ]
 
         for pattern in industry_patterns:
             if pattern in url_lower:
-                return 'industry'
+                return "industry"
 
-        return 'industry'  # Default to industry for web sources
+        return "industry"  # Default to industry for web sources
 
     def _extract_year(self, text: str) -> Optional[int]:
         """Extract publication year from text (2000-2025)"""
-        matches = re.findall(r'\b(20[0-2][0-9])\b', text)
+        matches = re.findall(r"\b(20[0-2][0-9])\b", text)
         if matches:
             # Return the most recent year found
             years = [int(y) for y in matches]
@@ -277,11 +279,11 @@ class DataForSEOClient:
     def _extract_doi_from_url(self, url: str) -> Optional[str]:
         """Extract DOI from URL if present"""
         # Pattern: doi.org/10.xxxx/yyyy or /doi/10.xxxx/yyyy
-        match = re.search(r'doi\.org/(10\.\d{4,}/[^\s]+)', url)
+        match = re.search(r"doi\.org/(10\.\d{4,}/[^\s]+)", url)
         if match:
             return unquote(match.group(1))
 
-        match = re.search(r'/doi/(10\.\d{4,}/[^\s]+)', url)
+        match = re.search(r"/doi/(10\.\d{4,}/[^\s]+)", url)
         if match:
             return unquote(match.group(1))
 
@@ -297,12 +299,12 @@ class DataForSEOClient:
             return None
 
         # Pattern: "by Author Name"
-        match = re.search(r'\bby\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})', snippet)
+        match = re.search(r"\bby\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})", snippet)
         if match:
             return match.group(1)
 
         # Pattern: "Author et al."
-        match = re.search(r'\b([A-Z][a-z]+)\s+et\s+al\.', snippet)
+        match = re.search(r"\b([A-Z][a-z]+)\s+et\s+al\.", snippet)
         if match:
             return f"{match.group(1)} et al."
 
@@ -333,7 +335,7 @@ if __name__ == "__main__":
         print("Example: python dataforseo_client.py 'machine learning healthcare 2023'")
         sys.exit(1)
 
-    query = ' '.join(sys.argv[1:])
+    query = " ".join(sys.argv[1:])
 
     print(f"Searching DataForSEO for: {query}\n")
 
@@ -348,7 +350,7 @@ if __name__ == "__main__":
         print(f"  URL: {result.get('url')}")
         print(f"  DOI: {result.get('doi')}")
         print(f"  Type: {result.get('source_type')}")
-        if result.get('abstract'):
+        if result.get("abstract"):
             print(f"  Abstract: {result['abstract'][:100]}...")
     else:
         print("No valid citation found")

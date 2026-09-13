@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 
 from agent_tools import registry
 from agent_tools.common import read_checkpoint, write_checkpoint
-from agent_tools.envelope import ok, fail, ToolInputError, resolve_under_root
+from agent_tools.envelope import ToolInputError, fail, ok, resolve_under_root
 
 OUTLINE_REL = "drafts/00_formatted_outline.md"
 CHECKPOINT_FIELD = "formatter_output"
@@ -43,8 +43,8 @@ INPUT_SCHEMA = {
             "type": "boolean",
             "default": False,
             "description": "Conservative merge: replace only '## '-headed blocks whose heading "
-                           "also exists in the current outline; keep all other blocks; append "
-                           "new headings. Default false = full overwrite.",
+            "also exists in the current outline; keep all other blocks; append "
+            "new headings. Default false = full overwrite.",
         },
     },
     "required": ["content"],
@@ -133,19 +133,23 @@ def run(args: Dict, root: Path) -> Dict:
         write_checkpoint(root, data)
         checkpoint_state = "updated"
 
-    return ok({
-        "path": OUTLINE_REL,
-        "words": len(content.split()),
-        "merged": merge,
-        "replaced_blocks": replaced,
-        "added_blocks": added,
-        "checkpoint": checkpoint_state,
-    })
+    return ok(
+        {
+            "path": OUTLINE_REL,
+            "words": len(content.split()),
+            "merged": merge,
+            "replaced_blocks": replaced,
+            "added_blocks": added,
+            "checkpoint": checkpoint_state,
+        }
+    )
 
 
-registry.register(registry.ToolSpec(
-    name="write_outline",
-    description=DESCRIPTION,
-    input_schema=INPUT_SCHEMA,
-    func=run,
-))
+registry.register(
+    registry.ToolSpec(
+        name="write_outline",
+        description=DESCRIPTION,
+        input_schema=INPUT_SCHEMA,
+        func=run,
+    )
+)

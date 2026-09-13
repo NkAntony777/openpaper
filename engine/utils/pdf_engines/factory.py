@@ -5,16 +5,17 @@ ABOUTME: Provides automatic engine selection with fallback logic
 """
 
 from pathlib import Path
-from typing import List, Optional, Literal
+from typing import List, Literal, Optional
 
-from .base import PDFEngine, PDFGenerationOptions, EngineResult
-from .libreoffice_engine import LibreOfficeEngine
+from utils.exceptions import PDFExportError
+
+from .base import EngineResult, PDFEngine, PDFGenerationOptions
 from .pandoc_engine import PandocLatexEngine
-from utils.exceptions import PDFExportError, ConfigurationError
 
 # WeasyPrint is optional - it requires system libraries (libgobject, pango, etc.)
 try:
     from .weasyprint_engine import WeasyPrintEngine
+
     WEASYPRINT_AVAILABLE = True
 except (ImportError, OSError):
     WEASYPRINT_AVAILABLE = False
@@ -44,8 +45,7 @@ class PDFEngineFactory:
 
     @classmethod
     def create(
-        cls,
-        engine_type: Literal['auto', 'libreoffice', 'pandoc', 'weasyprint'] = 'auto'
+        cls, engine_type: Literal["auto", "libreoffice", "pandoc", "weasyprint"] = "auto"
     ) -> Optional[PDFEngine]:
         """
         Create a PDF engine instance.
@@ -59,12 +59,12 @@ class PDFEngineFactory:
         Raises:
             ValueError: If specific engine requested but not available
         """
-        if engine_type == 'auto':
+        if engine_type == "auto":
             return cls._auto_select()
 
         # Map engine type to class - Pandoc/XeLaTeX only
         engine_map = {
-            'pandoc': PandocLatexEngine,
+            "pandoc": PandocLatexEngine,
         }
 
         engine_class = engine_map.get(engine_type)
@@ -72,7 +72,7 @@ class PDFEngineFactory:
             raise PDFExportError(
                 engine=engine_type,
                 reason=f"Unknown engine type: {engine_type}",
-                recovery_hint="Use 'auto', 'libreoffice', 'pandoc', or 'weasyprint'"
+                recovery_hint="Use 'auto', 'libreoffice', 'pandoc', or 'weasyprint'",
             )
 
         engine = engine_class()
@@ -80,7 +80,7 @@ class PDFEngineFactory:
             raise PDFExportError(
                 engine=engine.get_name(),
                 reason="Engine not available - required dependencies missing",
-                recovery_hint="Install dependencies or use 'auto' to try alternative engines"
+                recovery_hint="Install dependencies or use 'auto' to try alternative engines",
             )
 
         return engine
@@ -120,7 +120,7 @@ class PDFEngineFactory:
         md_file: Path,
         output_pdf: Path,
         options: Optional[PDFGenerationOptions] = None,
-        preferred_engine: Optional[str] = None
+        preferred_engine: Optional[str] = None,
     ) -> EngineResult:
         """
         Generate PDF with automatic fallback to other engines on failure.
@@ -167,7 +167,7 @@ class PDFEngineFactory:
                 error_message=(
                     "No PDF engines available. Install at least one of: "
                     "libreoffice-writer, pandoc+texlive, weasyprint"
-                )
+                ),
             )
 
         # Try each engine until one succeeds
@@ -185,9 +185,7 @@ class PDFEngineFactory:
 
         # All engines failed
         return last_result or EngineResult(
-            success=False,
-            engine_name="All",
-            error_message="All PDF engines failed"
+            success=False, engine_name="All", error_message="All PDF engines failed"
         )
 
 

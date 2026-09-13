@@ -14,18 +14,18 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
 from utils.factcheck_verifier import (
-    FactCheckVerifier,
-    VERDICT_SUPPORTED,
     VERDICT_CONTRADICTED,
     VERDICT_INSUFFICIENT,
-    strip_json_fences,
+    VERDICT_SUPPORTED,
+    FactCheckVerifier,
     _make_verdict,
+    strip_json_fences,
 )
-
 
 # =========================================================================
 # TestFormatReport
 # =========================================================================
+
 
 class TestFormatReport:
     """Tests for FactCheckVerifier.format_report() output."""
@@ -159,6 +159,7 @@ class TestFormatReport:
 # TestMarkdownFenceStripping
 # =========================================================================
 
+
 class TestMarkdownFenceStripping:
     """
     Tests the JSON parsing logic that strips ```json fences from LLM output.
@@ -205,7 +206,7 @@ class TestMarkdownFenceStripping:
         assert result["verdict"] == "SUPPORTED"
 
     def test_invalid_json_raises(self):
-        raw = '```json\nnot valid json\n```'
+        raw = "```json\nnot valid json\n```"
         with pytest.raises(json.JSONDecodeError):
             self._strip_and_parse(raw)
 
@@ -213,6 +214,7 @@ class TestMarkdownFenceStripping:
 # =========================================================================
 # TestVerifyClaims
 # =========================================================================
+
 
 class TestVerifyClaims:
     """Tests for verify_claims edge cases using a mocked verifier."""
@@ -237,6 +239,7 @@ class TestVerifyClaims:
 # =========================================================================
 # TestMakeVerdict
 # =========================================================================
+
 
 class TestMakeVerdict:
     """Tests for the _make_verdict helper function."""

@@ -5,20 +5,20 @@ ABOUTME: Generates DOCX first, then converts to PDF via LibreOffice CLI
 """
 
 import re
-import subprocess
 import shutil
+import subprocess
 from pathlib import Path
-from typing import Optional
 
-from .base import PDFEngine, PDFGenerationOptions, EngineResult
+from .base import EngineResult, PDFEngine, PDFGenerationOptions
 
 # Import DOCX generation from python-docx
 try:
     from docx import Document
-    from docx.shared import Pt, Inches
     from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt
+
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
@@ -62,19 +62,16 @@ class LibreOfficeEngine(PDFEngine):
             return False
 
         # Check if libreoffice command exists (libreoffice on Linux, soffice on macOS)
-        return shutil.which('libreoffice') is not None or shutil.which('soffice') is not None
+        return shutil.which("libreoffice") is not None or shutil.which("soffice") is not None
 
     def _get_libreoffice_cmd(self) -> str:
         """Get the correct LibreOffice command for this platform."""
-        if shutil.which('libreoffice'):
-            return 'libreoffice'
-        return 'soffice'
+        if shutil.which("libreoffice"):
+            return "libreoffice"
+        return "soffice"
 
     def generate(
-        self,
-        md_file: Path,
-        output_pdf: Path,
-        options: PDFGenerationOptions
+        self, md_file: Path, output_pdf: Path, options: PDFGenerationOptions
     ) -> EngineResult:
         """
         Generate PDF via DOCX → LibreOffice conversion.
@@ -90,11 +87,7 @@ class LibreOfficeEngine(PDFEngine):
         # Validate inputs
         error = self.validate_inputs(md_file, output_pdf)
         if error:
-            return EngineResult(
-                success=False,
-                engine_name=self.get_name(),
-                error_message=error
-            )
+            return EngineResult(success=False, engine_name=self.get_name(), error_message=error)
 
         try:
             # Step 1: Generate DOCX
@@ -117,14 +110,11 @@ class LibreOfficeEngine(PDFEngine):
             return EngineResult(
                 success=False,
                 engine_name=self.get_name(),
-                error_message=f"Unexpected error: {str(e)}"
+                error_message=f"Unexpected error: {str(e)}",
             )
 
     def _generate_docx(
-        self,
-        md_file: Path,
-        output_docx: Path,
-        options: PDFGenerationOptions
+        self, md_file: Path, output_docx: Path, options: PDFGenerationOptions
     ) -> EngineResult:
         """
         Generate DOCX from markdown using python-docx.
@@ -139,7 +129,7 @@ class LibreOfficeEngine(PDFEngine):
         """
         try:
             # Read markdown
-            with open(md_file, 'r', encoding='utf-8') as f:
+            with open(md_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
             # Create document
@@ -167,26 +157,26 @@ class LibreOfficeEngine(PDFEngine):
                     continue
 
                 # Title (# heading)
-                if line.startswith('# '):
+                if line.startswith("# "):
                     para = doc.add_heading(line[2:], level=1)
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     continue
 
                 # Section heading (## heading)
-                if line.startswith('## '):
+                if line.startswith("## "):
                     para = doc.add_heading(line[3:], level=2)
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                     continue
 
                 # Subsection heading (### heading)
-                if line.startswith('### '):
+                if line.startswith("### "):
                     # Level 3 headings should be italic, not bold (APA 7th edition)
                     para = doc.add_paragraph()
                     run = para.add_run(line[4:])
                     run.italic = True
                     run.bold = False
                     run.font.name = options.font_family
-                    run.font.size = Pt(int(options.font_size.replace('pt', '')))
+                    run.font.size = Pt(int(options.font_size.replace("pt", "")))
 
                     # Set paragraph formatting
                     para_format = para.paragraph_format
@@ -196,9 +186,9 @@ class LibreOfficeEngine(PDFEngine):
                     continue
 
                 # Horizontal rule
-                if line.startswith('---'):
+                if line.startswith("---"):
                     para = doc.add_paragraph()
-                    run = para.add_run('_' * 60)
+                    run = para.add_run("_" * 60)
                     run.font.size = Pt(12)
                     continue
 
@@ -214,7 +204,7 @@ class LibreOfficeEngine(PDFEngine):
                 # Set font for all runs
                 for run in para.runs:
                     run.font.name = options.font_family
-                    run.font.size = Pt(int(options.font_size.replace('pt', '')))
+                    run.font.size = Pt(int(options.font_size.replace("pt", "")))
 
             # Save DOCX
             doc.save(output_docx)
@@ -222,14 +212,14 @@ class LibreOfficeEngine(PDFEngine):
             return EngineResult(
                 success=True,
                 engine_name=f"{self.get_name()} (DOCX generation)",
-                output_path=output_docx
+                output_path=output_docx,
             )
 
         except Exception as e:
             return EngineResult(
                 success=False,
                 engine_name=f"{self.get_name()} (DOCX generation)",
-                error_message=f"Failed to generate DOCX: {str(e)}"
+                error_message=f"Failed to generate DOCX: {str(e)}",
             )
 
     def _process_inline_markdown(self, paragraph, text: str) -> None:
@@ -247,16 +237,15 @@ class LibreOfficeEngine(PDFEngine):
             paragraph: python-docx paragraph object
             text: Text with inline markdown
         """
-        import re
 
         # Pattern to match markdown inline elements
         # Matches: ***text***, **text**, *text*, `code`
         # In order of priority (longest match first)
         pattern = re.compile(
-            r'(\*\*\*(?P<bolditalic>[^\*]+)\*\*\*)|'  # ***bold italic***
-            r'(\*\*(?P<bold>[^\*]+)\*\*)|'            # **bold**
-            r'(\*(?P<italic>[^\*]+)\*)|'              # *italic*
-            r'(`(?P<code>[^`]+)`)'                     # `code`
+            r"(\*\*\*(?P<bolditalic>[^\*]+)\*\*\*)|"  # ***bold italic***
+            r"(\*\*(?P<bold>[^\*]+)\*\*)|"  # **bold**
+            r"(\*(?P<italic>[^\*]+)\*)|"  # *italic*
+            r"(`(?P<code>[^`]+)`)"  # `code`
         )
 
         current_pos = 0
@@ -264,23 +253,23 @@ class LibreOfficeEngine(PDFEngine):
         for match in pattern.finditer(text):
             # Add text before match (plain text)
             if match.start() > current_pos:
-                plain_text = text[current_pos:match.start()]
+                plain_text = text[current_pos : match.start()]
                 paragraph.add_run(plain_text)
 
             # Add formatted text based on match group
-            if match.group('bolditalic'):
-                run = paragraph.add_run(match.group('bolditalic'))
+            if match.group("bolditalic"):
+                run = paragraph.add_run(match.group("bolditalic"))
                 run.bold = True
                 run.italic = True
-            elif match.group('bold'):
-                run = paragraph.add_run(match.group('bold'))
+            elif match.group("bold"):
+                run = paragraph.add_run(match.group("bold"))
                 run.bold = True
-            elif match.group('italic'):
-                run = paragraph.add_run(match.group('italic'))
+            elif match.group("italic"):
+                run = paragraph.add_run(match.group("italic"))
                 run.italic = True
-            elif match.group('code'):
-                run = paragraph.add_run(match.group('code'))
-                run.font.name = 'Courier New'
+            elif match.group("code"):
+                run = paragraph.add_run(match.group("code"))
+                run.font.name = "Courier New"
                 run.font.size = Pt(11)
 
             current_pos = match.end()
@@ -289,11 +278,7 @@ class LibreOfficeEngine(PDFEngine):
         if current_pos < len(text):
             paragraph.add_run(text[current_pos:])
 
-    def _convert_docx_to_pdf(
-        self,
-        docx_file: Path,
-        output_pdf: Path
-    ) -> EngineResult:
+    def _convert_docx_to_pdf(self, docx_file: Path, output_pdf: Path) -> EngineResult:
         """
         Convert DOCX to PDF using LibreOffice headless mode.
 
@@ -312,24 +297,26 @@ class LibreOfficeEngine(PDFEngine):
             # Run LibreOffice in headless mode
             cmd = [
                 self._get_libreoffice_cmd(),
-                '--headless',
-                '--convert-to', 'pdf',
-                '--outdir', str(output_dir),
-                str(docx_file)
+                "--headless",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                str(output_dir),
+                str(docx_file),
             ]
 
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=60  # 60 second timeout
+                timeout=60,  # 60 second timeout
             )
 
             if result.returncode != 0:
                 return EngineResult(
                     success=False,
                     engine_name=self.get_name(),
-                    error_message=f"LibreOffice conversion failed: {result.stderr}"
+                    error_message=f"LibreOffice conversion failed: {result.stderr}",
                 )
 
             # LibreOffice creates PDF with same basename as DOCX
@@ -345,26 +332,22 @@ class LibreOfficeEngine(PDFEngine):
                 return EngineResult(
                     success=False,
                     engine_name=self.get_name(),
-                    error_message="LibreOffice did not generate PDF file"
+                    error_message="LibreOffice did not generate PDF file",
                 )
 
-            return EngineResult(
-                success=True,
-                engine_name=self.get_name(),
-                output_path=output_pdf
-            )
+            return EngineResult(success=True, engine_name=self.get_name(), output_path=output_pdf)
 
         except subprocess.TimeoutExpired:
             return EngineResult(
                 success=False,
                 engine_name=self.get_name(),
-                error_message="LibreOffice conversion timed out (>60s)"
+                error_message="LibreOffice conversion timed out (>60s)",
             )
         except Exception as e:
             return EngineResult(
                 success=False,
                 engine_name=self.get_name(),
-                error_message=f"Conversion failed: {str(e)}"
+                error_message=f"Conversion failed: {str(e)}",
             )
 
     @staticmethod
@@ -379,11 +362,11 @@ class LibreOfficeEngine(PDFEngine):
             Inches object
         """
         # Simple parser for common margin formats
-        if margin_str.endswith('in'):
-            value = float(margin_str.replace('in', ''))
+        if margin_str.endswith("in"):
+            value = float(margin_str.replace("in", ""))
             return Inches(value)
-        elif margin_str.endswith('cm'):
-            value = float(margin_str.replace('cm', ''))
+        elif margin_str.endswith("cm"):
+            value = float(margin_str.replace("cm", ""))
             return Inches(value / 2.54)  # Convert cm to inches
         else:
             # Default to 1 inch
@@ -403,29 +386,29 @@ class LibreOfficeEngine(PDFEngine):
         footer_para = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
 
         # Set alignment based on position
-        if 'center' in position:
+        if "center" in position:
             footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        elif 'right' in position:
+        elif "right" in position:
             footer_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         else:
             footer_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
         # Add page number field
         run = footer_para.add_run()
-        fldChar1 = OxmlElement('w:fldChar')
-        fldChar1.set(qn('w:fldCharType'), 'begin')
+        fldChar1 = OxmlElement("w:fldChar")
+        fldChar1.set(qn("w:fldCharType"), "begin")
 
-        instrText = OxmlElement('w:instrText')
-        instrText.set(qn('xml:space'), 'preserve')
-        instrText.text = 'PAGE'
+        instrText = OxmlElement("w:instrText")
+        instrText.set(qn("xml:space"), "preserve")
+        instrText.text = "PAGE"
 
-        fldChar2 = OxmlElement('w:fldChar')
-        fldChar2.set(qn('w:fldCharType'), 'end')
+        fldChar2 = OxmlElement("w:fldChar")
+        fldChar2.set(qn("w:fldCharType"), "end")
 
         run._r.append(fldChar1)
         run._r.append(instrText)
         run._r.append(fldChar2)
 
         # Style the page number
-        run.font.name = 'Times New Roman'
+        run.font.name = "Times New Roman"
         run.font.size = Pt(12)

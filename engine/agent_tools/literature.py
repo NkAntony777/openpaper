@@ -15,10 +15,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import requests
-
 from agent_tools import registry
 from agent_tools.common import BIBLIOGRAPHY_REL
-from agent_tools.envelope import ok, fail
+from agent_tools.envelope import fail, ok
 from utils.api_citations.orchestrator import CitationResearcher, set_research_verbosity
 from utils.citation_database import (
     CitationDatabase,
@@ -33,15 +32,17 @@ CITATION_SUMMARY_REL = "drafts/citation_summary.md"
 
 def _build_citation_summary(citation_database) -> str:
     """Build comprehensive citation database string for writing agent prompts."""
-    citation_summary = f"\n\n{'='*80}\n## CITATION DATABASE - {len(citation_database.citations)} CITATIONS AVAILABLE\n{'='*80}\n\n"
+    citation_summary = f"\n\n{'=' * 80}\n## CITATION DATABASE - {len(citation_database.citations)} CITATIONS AVAILABLE\n{'=' * 80}\n\n"
     citation_summary += "\u26a0\ufe0f  **CRITICAL CITATION RESTRICTION** \u26a0\ufe0f\n\n"
     citation_summary += "You MUST ONLY cite papers from this database. DO NOT:\n"
     citation_summary += "- Cite papers from your training data\n"
     citation_summary += "- Invent or hallucinate citations\n"
     citation_summary += "- Reference papers not listed below\n"
     citation_summary += "- Use author names not in this database\n\n"
-    citation_summary += "Citation format: Use {{cite_XXX}} where XXX is the citation ID shown below.\n"
-    citation_summary += f"\n{'='*80}\n\n"
+    citation_summary += (
+        "Citation format: Use {{cite_XXX}} where XXX is the citation ID shown below.\n"
+    )
+    citation_summary += f"\n{'=' * 80}\n\n"
 
     for i, citation in enumerate(citation_database.citations, 1):
         authors_str = ", ".join(citation.authors[:3])
@@ -63,10 +64,10 @@ def _build_citation_summary(citation_database) -> str:
 
         citation_summary += f"   Citation format: {{{{{citation.id}}}}}\n\n"
 
-    citation_summary += f"\n{'='*80}\n"
+    citation_summary += f"\n{'=' * 80}\n"
     citation_summary += f"Total citations available: {len(citation_database.citations)}\n"
     citation_summary += "Remember: ONLY cite from this list. No external citations allowed.\n"
-    citation_summary += f"{'='*80}\n"
+    citation_summary += f"{'=' * 80}\n"
 
     return citation_summary
 
@@ -76,7 +77,8 @@ def _quiet_stdout():
     """Keep stdout JSON-envelope-clean: redirect prints and detach stdout log handlers."""
     root_logger = logging.getLogger()
     stdout_handlers = [
-        h for h in list(root_logger.handlers)
+        h
+        for h in list(root_logger.handlers)
         if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stdout
     ]
     for h in stdout_handlers:
@@ -87,6 +89,7 @@ def _quiet_stdout():
     finally:
         for h in stdout_handlers:
             root_logger.addHandler(h)
+
 
 # Quick reachability probe — fails fast (with a retryable verdict) instead of
 # burning ~30s of per-API retries inside the researcher when the network is down.
@@ -110,13 +113,13 @@ INPUT_SCHEMA = {
             "type": "string",
             "minLength": 3,
             "description": "Search query — prefer specific author/year/keyword phrasing. "
-                           "If results are thin, rephrase rather than lowering min_results.",
+            "If results are thin, rephrase rather than lowering min_results.",
         },
         "min_results": {
             "type": "integer",
             "default": 5,
             "description": "Desired minimum number of new citations (default 5). Advisory only — "
-                           "the response flags when fewer were found.",
+            "the response flags when fewer were found.",
         },
     },
     "required": ["query"],
@@ -143,8 +146,8 @@ def _max_cite_number(db: CitationDatabase) -> int:
     highest = 0
     for c in db.citations:
         cid = c.id or ""
-        if cid.startswith("cite_") and cid[len("cite_"):].isdigit():
-            highest = max(highest, int(cid[len("cite_"):]))
+        if cid.startswith("cite_") and cid[len("cite_") :].isdigit():
+            highest = max(highest, int(cid[len("cite_") :]))
     return highest
 
 
@@ -207,7 +210,7 @@ def run(args: Dict, root: Path) -> Dict:
     base = _max_cite_number(db)  # next id follows the database's existing convention
     before = len(db.citations)
     added_count = add_citations_batch(db, found, deduplicate=True)
-    added = db.citations[before:before + added_count]
+    added = db.citations[before : before + added_count]
 
     # Gap-free sequential cite_XXX ids in the order citations were added.
     for i, c in enumerate(added, start=1):
@@ -218,8 +221,7 @@ def run(args: Dict, root: Path) -> Dict:
             save_citation_database(db, Path(root) / BIBLIOGRAPHY_REL)
         except Exception as e:
             return fail(
-                f"citations found but could not save {BIBLIOGRAPHY_REL}: "
-                f"{type(e).__name__}: {e}",
+                f"citations found but could not save {BIBLIOGRAPHY_REL}: {type(e).__name__}: {e}",
                 is_retryable=False,
             )
 
@@ -245,18 +247,22 @@ def run(args: Dict, root: Path) -> Dict:
             entry["url"] = c.url
         new_citations.append(entry)
 
-    return ok({
-        "query": query,
-        "new_citations": new_citations,
-        "total_in_db": len(db.citations),
-        "meets_min_results": added_count >= min_results,
-        "warnings": warnings,
-    })
+    return ok(
+        {
+            "query": query,
+            "new_citations": new_citations,
+            "total_in_db": len(db.citations),
+            "meets_min_results": added_count >= min_results,
+            "warnings": warnings,
+        }
+    )
 
 
-registry.register(registry.ToolSpec(
-    name="search_literature",
-    description=DESCRIPTION,
-    input_schema=INPUT_SCHEMA,
-    func=run,
-))
+registry.register(
+    registry.ToolSpec(
+        name="search_literature",
+        description=DESCRIPTION,
+        input_schema=INPUT_SCHEMA,
+        func=run,
+    )
+)

@@ -229,7 +229,8 @@ Smart routing (`QueryRouter`) classifies each query to pick the best starting AP
 | Component | Path |
 |-----------|------|
 | Pipeline orchestrator | `engine/draft_generator.py` |
-| Agent runner | `engine/utils/agent_runner.py` |
+| LLM runtime (run_agent) | `engine/utils/llm_runtime.py` |
+| Citation research (Scout) | `engine/utils/citation_research.py` |
 | Citation research | `engine/utils/api_citations/orchestrator.py` |
 | Citation compiler | `engine/utils/citation_compiler.py` |
 | Citation database | `engine/utils/citation_database.py` |

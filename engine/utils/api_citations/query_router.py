@@ -14,13 +14,12 @@ Routes citation research queries to the most appropriate API source:
 This maximizes source diversity while maintaining efficiency (1 API call per query).
 """
 
-from typing import Literal, List, Tuple
 from dataclasses import dataclass
-
+from typing import List, Literal, Tuple
 
 # Type definitions
-QueryType = Literal['academic', 'industry', 'mixed']
-APIName = Literal['crossref', 'semantic_scholar', 'gemini_grounded']
+QueryType = Literal["academic", "industry", "mixed"]
+APIName = Literal["crossref", "semantic_scholar", "gemini_grounded"]
 
 
 @dataclass
@@ -34,6 +33,7 @@ class QueryClassification:
         matched_patterns: List of patterns that triggered classification
         api_chain: Prioritized list of APIs to try
     """
+
     query_type: QueryType
     confidence: float
     matched_patterns: List[str]
@@ -71,103 +71,221 @@ class QueryRouter:
     # Industry source indicators (organizations, document types)
     INDUSTRY_PATTERNS = [
         # Consulting firms
-        'mckinsey', 'boston consulting', 'bcg', 'bain', 'deloitte',
-        'accenture', 'pwc', 'kpmg', 'ey', 'gartner', 'forrester',
-        'idc', 'ovum', 'frost & sullivan',
-
+        "mckinsey",
+        "boston consulting",
+        "bcg",
+        "bain",
+        "deloitte",
+        "accenture",
+        "pwc",
+        "kpmg",
+        "ey",
+        "gartner",
+        "forrester",
+        "idc",
+        "ovum",
+        "frost & sullivan",
         # Think tanks & research institutes
-        'brookings', 'rand corporation', 'carnegie', 'cato institute',
-        'heritage foundation', 'pew research', 'urban institute',
-        'chatham house', 'cfr', 'council on foreign relations',
-
+        "brookings",
+        "rand corporation",
+        "carnegie",
+        "cato institute",
+        "heritage foundation",
+        "pew research",
+        "urban institute",
+        "chatham house",
+        "cfr",
+        "council on foreign relations",
         # International organizations
-        'world bank', 'imf', 'international monetary fund',
-        'oecd', 'united nations', 'who', 'world health organization',
-        'wef', 'world economic forum', 'itu', 'wto',
-
+        "world bank",
+        "imf",
+        "international monetary fund",
+        "oecd",
+        "united nations",
+        "who",
+        "world health organization",
+        "wef",
+        "world economic forum",
+        "itu",
+        "wto",
         # Government & regulatory bodies
-        'european commission', 'eu commission', 'ec report',
-        'european parliament', 'us congress', 'congressional',
-        'government accountability office', 'gao',
-        'federal reserve', 'european central bank', 'ecb',
-        'fda', 'epa', 'cdc', 'nih', 'nist', 'nasa',
-
+        "european commission",
+        "eu commission",
+        "ec report",
+        "european parliament",
+        "us congress",
+        "congressional",
+        "government accountability office",
+        "gao",
+        "federal reserve",
+        "european central bank",
+        "ecb",
+        "fda",
+        "epa",
+        "cdc",
+        "nih",
+        "nist",
+        "nasa",
         # Standards bodies (use word boundaries to avoid false positives like "comparison")
-        'iso standard', 'iso ', 'ieee', 'ietf', 'w3c', 'oasis', 'ansi',
-
+        "iso standard",
+        "iso ",
+        "ieee",
+        "ietf",
+        "w3c",
+        "oasis",
+        "ansi",
         # Document types
-        'white paper', 'whitepaper', 'policy brief', 'policy paper',
-        'technical report', 'industry report', 'market research',
-        'working paper', 'briefing', 'position paper',
-        'guidelines', 'framework', 'best practices',
-        'standards document', 'regulation', 'directive',
-
+        "white paper",
+        "whitepaper",
+        "policy brief",
+        "policy paper",
+        "technical report",
+        "industry report",
+        "market research",
+        "working paper",
+        "briefing",
+        "position paper",
+        "guidelines",
+        "framework",
+        "best practices",
+        "standards document",
+        "regulation",
+        "directive",
         # Business/Industry focus
-        'market analysis', 'industry trends', 'sector overview',
-        'competitive landscape', 'market forecast',
-
+        "market analysis",
+        "industry trends",
+        "sector overview",
+        "competitive landscape",
+        "market forecast",
         # Tech companies & products (NEW - Day 3A enhancement)
-        'openai', 'anthropic', 'google', 'microsoft', 'meta',
-        'amazon', 'apple', 'ibm', 'oracle', 'salesforce',
-        'gpt-4', 'claude', 'gemini', 'chatgpt', 'copilot',
-        'aws', 'azure', 'gcp', 'cloud platform',
-
+        "openai",
+        "anthropic",
+        "google",
+        "microsoft",
+        "meta",
+        "amazon",
+        "apple",
+        "ibm",
+        "oracle",
+        "salesforce",
+        "gpt-4",
+        "claude",
+        "gemini",
+        "chatgpt",
+        "copilot",
+        "aws",
+        "azure",
+        "gcp",
+        "cloud platform",
         # Consulting/Industry sources (NEW - Day 3A enhancement)
-        'comparison', 'benchmark', 'pricing comparison',
-        'vendor', 'product', 'service provider',
-        'platform', 'saas', 'enterprise software',
-        'implementation', 'deployment', 'migration',
+        "comparison",
+        "benchmark",
+        "pricing comparison",
+        "vendor",
+        "product",
+        "service provider",
+        "platform",
+        "saas",
+        "enterprise software",
+        "implementation",
+        "deployment",
+        "migration",
     ]
 
     # Academic source indicators (peer-reviewed, scholarly)
     ACADEMIC_PATTERNS = [
         # Publication types
-        'peer-reviewed', 'peer reviewed', 'scholarly article',
-        'journal article', 'academic paper', 'research paper',
-        'conference paper', 'proceedings', 'dissertation',
-        'draft', 'monograph',
-
+        "peer-reviewed",
+        "peer reviewed",
+        "scholarly article",
+        "journal article",
+        "academic paper",
+        "research paper",
+        "conference paper",
+        "proceedings",
+        "dissertation",
+        "draft",
+        "monograph",
         # Research methodology
-        'empirical study', 'empirical research', 'empirical analysis',
-        'systematic review', 'meta-analysis', 'literature review',
-        'randomized controlled trial', 'rct', 'cohort study',
-        'case-control study', 'longitudinal study',
-        'qualitative research', 'quantitative research',
-
+        "empirical study",
+        "empirical research",
+        "empirical analysis",
+        "systematic review",
+        "meta-analysis",
+        "literature review",
+        "randomized controlled trial",
+        "rct",
+        "cohort study",
+        "case-control study",
+        "longitudinal study",
+        "qualitative research",
+        "quantitative research",
         # Academic rigor indicators
-        'published in', 'indexed in', 'scopus', 'web of science',
-        'impact factor', 'cited by', 'citations',
-
+        "published in",
+        "indexed in",
+        "scopus",
+        "web of science",
+        "impact factor",
+        "cited by",
+        "citations",
         # Scholarly databases
-        'pubmed', 'jstor', 'springer', 'elsevier', 'wiley',
-        'taylor & francis', 'sage', 'oxford university press',
-
+        "pubmed",
+        "jstor",
+        "springer",
+        "elsevier",
+        "wiley",
+        "taylor & francis",
+        "sage",
+        "oxford university press",
         # Research focus
-        'theoretical framework', 'conceptual model',
-        'research methodology', 'data analysis',
-
+        "theoretical framework",
+        "conceptual model",
+        "research methodology",
+        "data analysis",
         # Economic & business theory (NEW - Day 3A enhancement)
-        'economics', 'economic theory', 'economic model',
-        'pricing theory', 'market theory', 'game theory',
-        'transaction cost', 'information goods', 'public goods',
-        'two-sided market', 'platform economics', 'network effects',
-        'demand elasticity', 'price discrimination', 'marginal cost',
-        'economies of scale', 'market equilibrium',
-
+        "economics",
+        "economic theory",
+        "economic model",
+        "pricing theory",
+        "market theory",
+        "game theory",
+        "transaction cost",
+        "information goods",
+        "public goods",
+        "two-sided market",
+        "platform economics",
+        "network effects",
+        "demand elasticity",
+        "price discrimination",
+        "marginal cost",
+        "economies of scale",
+        "market equilibrium",
         # Technology/CS theory (NEW - Day 3A enhancement)
-        'algorithm', 'computational complexity', 'machine learning',
-        'neural network', 'natural language processing',
-        'computer vision', 'distributed systems', 'cryptography',
-        'information retrieval', 'data mining',
-
+        "algorithm",
+        "computational complexity",
+        "machine learning",
+        "neural network",
+        "natural language processing",
+        "computer vision",
+        "distributed systems",
+        "cryptography",
+        "information retrieval",
+        "data mining",
         # Social sciences (NEW - Day 3A enhancement)
-        'sociological', 'psychological', 'anthropological',
-        'behavioral', 'cognitive', 'organizational behavior',
-
+        "sociological",
+        "psychological",
+        "anthropological",
+        "behavioral",
+        "cognitive",
+        "organizational behavior",
         # Environmental/climate science (NEW - Day 3A enhancement)
-        'climate science', 'environmental impact', 'carbon emissions',
-        'renewable energy', 'sustainability assessment',
-        'ecological', 'biodiversity',
+        "climate science",
+        "environmental impact",
+        "carbon emissions",
+        "renewable energy",
+        "sustainability assessment",
+        "ecological",
+        "biodiversity",
     ]
 
     def __init__(self, enable_multilingual: bool = True):
@@ -186,28 +304,51 @@ class QueryRouter:
     def _add_multilingual_patterns(self) -> None:
         """Add German and Spanish pattern support."""
         # German patterns
-        self.INDUSTRY_PATTERNS.extend([
-            'bericht', 'studie', 'whitepaper', 'leitfaden',  # Document types
-            'richtlinien', 'verordnung', 'rahmenwerk',  # Policy/standards
-        ])
+        self.INDUSTRY_PATTERNS.extend(
+            [
+                "bericht",
+                "studie",
+                "whitepaper",
+                "leitfaden",  # Document types
+                "richtlinien",
+                "verordnung",
+                "rahmenwerk",  # Policy/standards
+            ]
+        )
 
-        self.ACADEMIC_PATTERNS.extend([
-            'wissenschaftliche arbeit', 'forschungsarbeit',  # Research types
-            'peer-review', 'fachzeitschrift',  # Peer review
-            'empirische studie', 'meta-analyse',  # Methodology
-        ])
+        self.ACADEMIC_PATTERNS.extend(
+            [
+                "wissenschaftliche arbeit",
+                "forschungsarbeit",  # Research types
+                "peer-review",
+                "fachzeitschrift",  # Peer review
+                "empirische studie",
+                "meta-analyse",  # Methodology
+            ]
+        )
 
         # Spanish patterns
-        self.INDUSTRY_PATTERNS.extend([
-            'informe', 'libro blanco', 'directrices',  # Document types
-            'marco', 'regulación', 'normativa',  # Policy/standards
-        ])
+        self.INDUSTRY_PATTERNS.extend(
+            [
+                "informe",
+                "libro blanco",
+                "directrices",  # Document types
+                "marco",
+                "regulación",
+                "normativa",  # Policy/standards
+            ]
+        )
 
-        self.ACADEMIC_PATTERNS.extend([
-            'artículo académico', 'trabajo de investigación',  # Research types
-            'revisión por pares', 'revista académica',  # Peer review
-            'estudio empírico', 'metaanálisis',  # Methodology
-        ])
+        self.ACADEMIC_PATTERNS.extend(
+            [
+                "artículo académico",
+                "trabajo de investigación",  # Research types
+                "revisión por pares",
+                "revista académica",  # Peer review
+                "estudio empírico",
+                "metaanálisis",  # Methodology
+            ]
+        )
 
     def classify_query(self, query: str) -> Tuple[QueryType, float, List[str]]:
         """
@@ -239,29 +380,29 @@ class QueryRouter:
         if industry_matches and not academic_matches:
             # Clear industry query
             confidence = min(0.9, 0.5 + (len(industry_matches) * 0.1))
-            return 'industry', confidence, industry_matches
+            return "industry", confidence, industry_matches
 
         elif academic_matches and not industry_matches:
             # Clear academic query
             confidence = min(0.9, 0.5 + (len(academic_matches) * 0.1))
-            return 'academic', confidence, academic_matches
+            return "academic", confidence, academic_matches
 
         elif industry_matches and academic_matches:
             # Mixed query (both types)
             if len(industry_matches) > len(academic_matches):
                 confidence = 0.6
-                return 'industry', confidence, industry_matches + academic_matches
+                return "industry", confidence, industry_matches + academic_matches
             elif len(academic_matches) > len(industry_matches):
                 confidence = 0.6
-                return 'academic', confidence, industry_matches + academic_matches
+                return "academic", confidence, industry_matches + academic_matches
             else:
                 confidence = 0.5
-                return 'mixed', confidence, industry_matches + academic_matches
+                return "mixed", confidence, industry_matches + academic_matches
 
         else:
             # No clear indicators - default to mixed
             confidence = 0.3
-            return 'mixed', confidence, []
+            return "mixed", confidence, []
 
     def get_api_chain(self, query_type: QueryType) -> List[APIName]:
         """
@@ -278,17 +419,17 @@ class QueryRouter:
         - academic: Crossref → Semantic Scholar → Gemini Grounded
         - mixed: Semantic Scholar → Gemini Grounded → Crossref
         """
-        if query_type == 'industry':
+        if query_type == "industry":
             # Prioritize web sources for industry queries
-            return ['gemini_grounded', 'semantic_scholar', 'crossref']
+            return ["gemini_grounded", "semantic_scholar", "crossref"]
 
-        elif query_type == 'academic':
+        elif query_type == "academic":
             # Prioritize academic sources for scholarly queries
-            return ['crossref', 'semantic_scholar', 'gemini_grounded']
+            return ["crossref", "semantic_scholar", "gemini_grounded"]
 
         else:  # mixed
             # Balanced approach for mixed queries
-            return ['semantic_scholar', 'gemini_grounded', 'crossref']
+            return ["semantic_scholar", "gemini_grounded", "crossref"]
 
     def classify_and_route(self, query: str) -> QueryClassification:
         """
@@ -317,13 +458,14 @@ class QueryRouter:
             query_type=query_type,
             confidence=confidence,
             matched_patterns=patterns,
-            api_chain=api_chain
+            api_chain=api_chain,
         )
 
 
 # ============================================================================
 # STANDALONE TESTING
 # ============================================================================
+
 
 def main():
     """Test QueryRouter with sample queries."""
@@ -336,22 +478,20 @@ def main():
         "WHO COVID-19 vaccination guidelines",
         "European Commission AI regulation framework",
         "OECD economic outlook 2024",
-
         # Academic queries
         "peer-reviewed studies on climate change mitigation",
         "systematic review of carbon pricing mechanisms",
         "empirical analysis of renewable energy adoption",
         "meta-analysis of COVID-19 vaccine efficacy",
-
         # Mixed queries
         "blockchain technology best practices",
         "artificial intelligence ethics frameworks",
         "cybersecurity incident response strategies",
     ]
 
-    print("="*80)
+    print("=" * 80)
     print("QUERY ROUTER - CLASSIFICATION TEST")
-    print("="*80)
+    print("=" * 80)
 
     for query in test_queries:
         result = router.classify_and_route(query)
@@ -363,5 +503,5 @@ def main():
             print(f"  Patterns: {', '.join(result.matched_patterns[:3])}...")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

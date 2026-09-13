@@ -2,23 +2,23 @@
 """Tests for checkpoint save/load/restore functionality."""
 
 import json
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock
-
 import sys
+from pathlib import Path
+
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
+from phases.context import DraftContext
 from utils.checkpoint import (
-    save_checkpoint,
+    PHASES,
+    _deserialize_scout_result,
+    _serialize_scout_result,
+    get_next_phase,
     load_checkpoint,
     restore_context,
-    get_next_phase,
-    PHASES,
-    _serialize_scout_result,
-    _deserialize_scout_result,
+    save_checkpoint,
 )
-from phases.context import DraftContext
 from utils.citation_database import Citation
 
 
@@ -34,7 +34,7 @@ def mock_context():
     ctx.verbose = False
     ctx.skip_validation = True
     ctx.blurb = "Test blurb"
-    
+
     # Set phase outputs
     ctx.scout_output = "Scout output text"
     ctx.architect_output = "# Outline\n## Section 1"
@@ -42,47 +42,54 @@ def mock_context():
     ctx.body_output = "Body text content"
     ctx.conclusion_output = "Conclusion text"
     ctx.citation_summary = "Citation summary"
-    
+
     # Mock folders
     ctx.folders = {
-        'root': Path('/tmp/test'),
-        'research': Path('/tmp/test/research'),
-        'drafts': Path('/tmp/test/drafts'),
+        "root": Path("/tmp/test"),
+        "research": Path("/tmp/test/research"),
+        "drafts": Path("/tmp/test/drafts"),
     }
-    
-    ctx.word_targets = {'min_citations': 10}
+
+    ctx.word_targets = {"min_citations": 10}
     ctx.language_name = "English"
     ctx.language_instruction = "Write in English"
-    
+
     return ctx
 
 
 class TestGetNextPhase:
     """Test phase ordering logic."""
-    
+
     def test_phases_order(self):
         """Verify PHASES constant has correct order."""
-        assert PHASES == ["research", "structure", "citations", "compose", "validate", "compile"]
-    
+        assert PHASES == [
+            "research",
+            "structure",
+            "citations",
+            "compose",
+            "validate",
+            "compile",
+        ]
+
     def test_next_after_research(self):
         assert get_next_phase("research") == "structure"
-    
+
     def test_next_after_structure(self):
         assert get_next_phase("structure") == "citations"
-    
+
     def test_next_after_citations(self):
         assert get_next_phase("citations") == "compose"
-    
+
     def test_next_after_compose(self):
         assert get_next_phase("compose") == "validate"
-    
+
     def test_next_after_validate(self):
         assert get_next_phase("validate") == "compile"
-    
+
     def test_next_after_compile(self):
         """No phase after compile."""
         assert get_next_phase("compile") is None
-    
+
     def test_unknown_phase(self):
         """Unknown phase should start from beginning."""
         assert get_next_phase("unknown") == "research"
@@ -90,30 +97,30 @@ class TestGetNextPhase:
 
 class TestSaveLoadCheckpoint:
     """Test checkpoint save and load."""
-    
+
     def test_save_checkpoint(self, mock_context, tmp_path):
         """Test saving checkpoint creates valid JSON."""
         checkpoint_path = save_checkpoint(mock_context, "research", tmp_path)
-        
+
         assert checkpoint_path.exists()
         assert checkpoint_path.name == "checkpoint.json"
-        
+
         data = json.loads(checkpoint_path.read_text())
         assert data["completed_phase"] == "research"
         assert data["topic"] == "Test Topic"
         assert data["language"] == "en"
         assert data["scout_output"] == "Scout output text"
-    
+
     def test_load_checkpoint(self, mock_context, tmp_path):
         """Test loading checkpoint returns correct data."""
         save_checkpoint(mock_context, "structure", tmp_path)
-        
+
         data, phase = load_checkpoint(tmp_path / "checkpoint.json")
-        
+
         assert phase == "structure"
         assert data["topic"] == "Test Topic"
         assert data["architect_output"] == "# Outline\n## Section 1"
-    
+
     def test_load_nonexistent_checkpoint(self, tmp_path):
         """Test loading nonexistent checkpoint raises error."""
         with pytest.raises(FileNotFoundError):
@@ -122,33 +129,33 @@ class TestSaveLoadCheckpoint:
 
 class TestRestoreContext:
     """Test context restoration from checkpoint."""
-    
+
     def test_restore_basic_fields(self, mock_context, tmp_path):
         """Test restoring basic string fields."""
         save_checkpoint(mock_context, "compose", tmp_path)
         data, _ = load_checkpoint(tmp_path / "checkpoint.json")
-        
+
         # Create new empty context
         new_ctx = DraftContext()
         restore_context(new_ctx, data)
-        
+
         assert new_ctx.topic == "Test Topic"
         assert new_ctx.language == "en"
         assert new_ctx.academic_level == "master"
         assert new_ctx.blurb == "Test blurb"
-    
+
     def test_restore_phase_outputs(self, mock_context, tmp_path):
         """Test restoring phase output strings."""
         save_checkpoint(mock_context, "compose", tmp_path)
         data, _ = load_checkpoint(tmp_path / "checkpoint.json")
-        
+
         new_ctx = DraftContext()
         restore_context(new_ctx, data)
-        
+
         assert new_ctx.scout_output == "Scout output text"
         assert new_ctx.architect_output == "# Outline\n## Section 1"
         assert new_ctx.intro_output == "Introduction text with {cite_001}"
-    
+
     def test_restore_folders_as_paths(self, mock_context, tmp_path):
         """Test folders are restored as Path objects."""
         save_checkpoint(mock_context, "research", tmp_path)
@@ -157,8 +164,10 @@ class TestRestoreContext:
         new_ctx = DraftContext()
         restore_context(new_ctx, data)
 
-        assert isinstance(new_ctx.folders['root'], Path)
-        assert str(new_ctx.folders['root']) == "/tmp/test"
+        assert isinstance(new_ctx.folders["root"], Path)
+        # Compare Path-to-Path: the JSON roundtrip stores os-native fspath text,
+        # so a hardcoded POSIX string only holds on POSIX.
+        assert new_ctx.folders["root"] == Path("/tmp/test")
 
 
 class TestCitationSerialization:
@@ -176,10 +185,7 @@ class TestCitationSerialization:
             doi="10.1234/test",
         )
 
-        scout_result = {
-            "citations": [citation],
-            "other_data": "preserved"
-        }
+        scout_result = {"citations": [citation], "other_data": "preserved"}
 
         serialized = _serialize_scout_result(scout_result)
 
@@ -191,15 +197,17 @@ class TestCitationSerialization:
     def test_deserialize_citation_dicts(self):
         """Test that citation dicts deserialize to Citation objects."""
         scout_result = {
-            "citations": [{
-                "id": "cite_001",
-                "authors": ["Smith, J."],
-                "year": 2024,
-                "title": "Test Paper",
-                "source_type": "journal",
-                "language": "english",
-            }],
-            "other_data": "preserved"
+            "citations": [
+                {
+                    "id": "cite_001",
+                    "authors": ["Smith, J."],
+                    "year": 2024,
+                    "title": "Test Paper",
+                    "source_type": "journal",
+                    "language": "english",
+                }
+            ],
+            "other_data": "preserved",
         }
 
         deserialized = _deserialize_scout_result(scout_result)
@@ -252,7 +260,7 @@ class TestEdgeCases:
     def test_corrupt_checkpoint_json(self, tmp_path):
         """Test loading corrupt JSON raises appropriate error."""
         checkpoint_path = tmp_path / "checkpoint.json"
-        checkpoint_path.write_text("{ invalid json }", encoding='utf-8')
+        checkpoint_path.write_text("{ invalid json }", encoding="utf-8")
 
         with pytest.raises(json.JSONDecodeError):
             load_checkpoint(checkpoint_path)
@@ -261,11 +269,16 @@ class TestEdgeCases:
         """Test checkpoint with missing fields uses defaults."""
         checkpoint_path = tmp_path / "checkpoint.json"
         # Minimal checkpoint - only required fields
-        checkpoint_path.write_text(json.dumps({
-            "version": "1.0",
-            "completed_phase": "research",
-            "topic": "Minimal Test",
-        }), encoding='utf-8')
+        checkpoint_path.write_text(
+            json.dumps(
+                {
+                    "version": "1.0",
+                    "completed_phase": "research",
+                    "topic": "Minimal Test",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         data, phase = load_checkpoint(checkpoint_path)
         assert phase == "research"
@@ -283,7 +296,7 @@ class TestEdgeCases:
         ctx = DraftContext()
         ctx.topic = "Künstliche Intelligenz: 人工智能 и ИИ"
         ctx.scout_output = "研究摘要 with émojis 🎉"
-        ctx.folders = {'root': tmp_path}
+        ctx.folders = {"root": tmp_path}
 
         save_checkpoint(ctx, "research", tmp_path)
         data, _ = load_checkpoint(tmp_path / "checkpoint.json")
@@ -370,11 +383,11 @@ class TestResumeWorkflow:
         original.conclusion_output = "Conclusion text"
 
         original.folders = {
-            'root': tmp_path,
-            'research': tmp_path / 'research',
-            'drafts': tmp_path / 'drafts',
+            "root": tmp_path,
+            "research": tmp_path / "research",
+            "drafts": tmp_path / "drafts",
         }
-        original.word_targets = {'min_citations': 50, 'total': '50000-80000'}
+        original.word_targets = {"min_citations": 50, "total": "50000-80000"}
         original.language_name = "German"
         original.language_instruction = "Write in German"
 

@@ -21,7 +21,7 @@ from agent_tools.common import (
     sync_checkpoint_section,
     update_section_status,
 )
-from agent_tools.envelope import ok, fail
+from agent_tools.envelope import fail, ok
 from agent_tools.write_section import CITE_REF_RE, _check_guardrails
 
 with contextlib.redirect_stdout(io.StringIO()):
@@ -36,7 +36,8 @@ def _quiet_stdout():
     """Keep stdout JSON-envelope-clean: redirect prints and detach stdout log handlers."""
     root_logger = logging.getLogger()
     stdout_handlers = [
-        h for h in list(root_logger.handlers)
+        h
+        for h in list(root_logger.handlers)
         if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stdout
     ]
     for h in stdout_handlers:
@@ -47,6 +48,7 @@ def _quiet_stdout():
     finally:
         for h in stdout_handlers:
             root_logger.addHandler(h)
+
 
 REVISE_MODEL = "gemini-3-flash-preview"
 
@@ -71,13 +73,13 @@ INPUT_SCHEMA = {
             "type": "string",
             "enum": list(SECTION_FILES.keys()),
             "description": "Which section to revise (must exist — write it with "
-                           "write_section first).",
+            "write_section first).",
         },
         "instructions": {
             "type": "string",
             "minLength": 1,
             "description": "Revision instructions for the LLM (used whenever find_replace "
-                           "is absent or has misses).",
+            "is absent or has misses).",
         },
         "find_replace": {
             "type": "array",
@@ -90,8 +92,8 @@ INPUT_SCHEMA = {
                 "required": ["find", "replace"],
             },
             "description": "Optional exact-match replacements. A pair is applied only if its "
-                           "'find' occurs exactly once; otherwise it lands in "
-                           "missed_replacements and is passed to the LLM.",
+            "'find' occurs exactly once; otherwise it lands in "
+            "missed_replacements and is passed to the LLM.",
         },
     },
     "required": ["section", "instructions"],
@@ -179,10 +181,12 @@ def run(args: Dict, root: Path) -> Dict:
             if occurrences == 0:
                 missed.append({"find": pair["find"], "reason": "not_found"})
             elif occurrences > 1:
-                missed.append({
-                    "find": pair["find"],
-                    "reason": f"ambiguous ({occurrences} matches)",
-                })
+                missed.append(
+                    {
+                        "find": pair["find"],
+                        "reason": f"ambiguous ({occurrences} matches)",
+                    }
+                )
         if not missed:
             new_text = current
             for pair in pairs:
@@ -214,7 +218,8 @@ def run(args: Dict, root: Path) -> Dict:
     # A revision invalidates the section's last score: resume must re-verify before
     # skipping, and the paper-level finish gate re-checks the word floor anyway.
     status_ledger = update_section_status(
-        root, section,
+        root,
+        section,
         status="revised",
         words=len(new_text.split()),
         citations_count=len(refs),
@@ -222,22 +227,26 @@ def run(args: Dict, root: Path) -> Dict:
         updated_at=datetime.now().isoformat(timespec="seconds"),
     )
 
-    return ok({
-        "section": section,
-        "path": rel_path,
-        "words": len(new_text.split()),
-        "applied_find_replace": applied_direct,
-        "missed_replacements": missed,
-        "llm_revised": llm_revised,
-        "snapshot": snapshot,
-        "status_ledger": status_ledger,
-        **sync,
-    })
+    return ok(
+        {
+            "section": section,
+            "path": rel_path,
+            "words": len(new_text.split()),
+            "applied_find_replace": applied_direct,
+            "missed_replacements": missed,
+            "llm_revised": llm_revised,
+            "snapshot": snapshot,
+            "status_ledger": status_ledger,
+            **sync,
+        }
+    )
 
 
-registry.register(registry.ToolSpec(
-    name="revise_section",
-    description=DESCRIPTION,
-    input_schema=INPUT_SCHEMA,
-    func=run,
-))
+registry.register(
+    registry.ToolSpec(
+        name="revise_section",
+        description=DESCRIPTION,
+        input_schema=INPUT_SCHEMA,
+        func=run,
+    )
+)

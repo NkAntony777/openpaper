@@ -101,8 +101,13 @@ def parse_global_issues(text: str) -> List[Dict]:
                 issues.append(current)
             severity = (m.group(2) or "medium").strip().lower() or "medium"
             scope = (m.group(3) or "global").strip() or "global"
-            current = {"id": m.group(1), "severity": severity,
-                       "scope": scope, "issue": "", "fix": ""}
+            current = {
+                "id": m.group(1),
+                "severity": severity,
+                "scope": scope,
+                "issue": "",
+                "fix": "",
+            }
             continue
         if current is None:
             continue
@@ -129,8 +134,11 @@ def _group_issues_by_section(
     for it in issues:
         scope = it.get("scope", "global")
         if scope == "global":
-            named = [s for s in planned
-                     if re.search(rf"\b{re.escape(s)}\b", it.get("fix") or "", re.IGNORECASE)]
+            named = [
+                s
+                for s in planned
+                if re.search(rf"\b{re.escape(s)}\b", it.get("fix") or "", re.IGNORECASE)
+            ]
             if not named:
                 notes.append(
                     f"{it['id']}: skipped — global-scope issue names no section in its fix"
@@ -246,8 +254,11 @@ def run_paper(
             continue
         cap = _session_cap(budget.section_cost)
         if cap <= 0:
-            remaining = [s for s in planned if s not in result.sections_skipped
-                         and s not in result.sections_completed]
+            remaining = [
+                s
+                for s in planned
+                if s not in result.sections_skipped and s not in result.sections_completed
+            ]
             _warn(f"total budget exhausted after ${consumed:.2f}; not attempted: {remaining}")
             failed_sections.extend(remaining)
             break
@@ -330,7 +341,8 @@ def run_paper(
                 _record(run_result, f"fix-{section}")
                 report = (
                     run_result.settled_text or "(no report text)"
-                    if run_result.ok else f"session failed: {run_result.reason}"
+                    if run_result.ok
+                    else f"session failed: {run_result.reason}"
                 )
                 # Close the loop on disk truth, not self-report: re-score the section
                 # after the fix and only confirm when it actually passes.
@@ -377,8 +389,9 @@ def run_paper(
     try:
         from harness.acceptance import run_finish_acceptance
 
-        gate = run_finish_acceptance(root, min_full_score=min_full_score,
-                                     full_score=result.full_score)
+        gate = run_finish_acceptance(
+            root, min_full_score=min_full_score, full_score=result.full_score
+        )
         result.claims_clean = gate.claims_clean
         result.forbidden_hits = len(gate.forbidden_hits)
         result.citation_rate = gate.citation_rate

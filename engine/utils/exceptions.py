@@ -4,7 +4,7 @@ ABOUTME: Custom exception hierarchy for production-grade error handling
 ABOUTME: Provides domain-specific exceptions with context and recovery guidance
 """
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 class DraftGenerationError(Exception):
@@ -19,7 +19,7 @@ class DraftGenerationError(Exception):
         self,
         message: str,
         context: Optional[Dict[str, Any]] = None,
-        recovery_hint: Optional[str] = None
+        recovery_hint: Optional[str] = None,
     ):
         """
         Initialize draft generation error.
@@ -60,7 +60,7 @@ class APIQuotaExceededError(DraftGenerationError):
         api_name: str,
         quota_limit: Optional[int] = None,
         reset_time: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize API quota exceeded error.
@@ -71,27 +71,20 @@ class APIQuotaExceededError(DraftGenerationError):
             reset_time: When the quota will reset (ISO format or human-readable)
             **kwargs: Additional context passed to base class
         """
-        context = kwargs.get('context', {})
-        context.update({
-            'api_name': api_name,
-            'quota_limit': quota_limit,
-            'reset_time': reset_time
-        })
+        context = kwargs.get("context", {})
+        context.update({"api_name": api_name, "quota_limit": quota_limit, "reset_time": reset_time})
 
         message = f"{api_name} API quota exceeded"
         if quota_limit:
             message += f" (limit: {quota_limit})"
 
-        recovery_hint = kwargs.get('recovery_hint') or (
+        recovery_hint = kwargs.get("recovery_hint") or (
             f"Wait until {reset_time} for quota reset, or use alternative API"
-            if reset_time else "Switch to alternative API or use cached data"
+            if reset_time
+            else "Switch to alternative API or use cached data"
         )
 
-        super().__init__(
-            message=message,
-            context=context,
-            recovery_hint=recovery_hint
-        )
+        super().__init__(message=message, context=context, recovery_hint=recovery_hint)
 
         self.api_name = api_name
         self.quota_limit = quota_limit
@@ -106,13 +99,7 @@ class CitationFetchError(DraftGenerationError):
     System should fall back to alternative citation sources or cached data.
     """
 
-    def __init__(
-        self,
-        citation_id: str,
-        source: str,
-        reason: Optional[str] = None,
-        **kwargs
-    ):
+    def __init__(self, citation_id: str, source: str, reason: Optional[str] = None, **kwargs):
         """
         Initialize citation fetch error.
 
@@ -122,26 +109,18 @@ class CitationFetchError(DraftGenerationError):
             reason: Reason for failure (e.g., "Network timeout", "Invalid DOI")
             **kwargs: Additional context passed to base class
         """
-        context = kwargs.get('context', {})
-        context.update({
-            'citation_id': citation_id,
-            'source': source,
-            'reason': reason
-        })
+        context = kwargs.get("context", {})
+        context.update({"citation_id": citation_id, "source": source, "reason": reason})
 
         message = f"Failed to fetch citation {citation_id} from {source}"
         if reason:
             message += f": {reason}"
 
-        recovery_hint = kwargs.get('recovery_hint') or (
+        recovery_hint = kwargs.get("recovery_hint") or (
             f"Try alternative citation source or use cached data for {citation_id}"
         )
 
-        super().__init__(
-            message=message,
-            context=context,
-            recovery_hint=recovery_hint
-        )
+        super().__init__(message=message, context=context, recovery_hint=recovery_hint)
 
         self.citation_id = citation_id
         self.source = source
@@ -162,7 +141,7 @@ class PDFExportError(DraftGenerationError):
         input_file: Optional[str] = None,
         output_file: Optional[str] = None,
         reason: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize PDF export error.
@@ -174,27 +153,25 @@ class PDFExportError(DraftGenerationError):
             reason: Reason for failure (e.g., "LibreOffice not installed")
             **kwargs: Additional context passed to base class
         """
-        context = kwargs.get('context', {})
-        context.update({
-            'engine': engine,
-            'input_file': input_file,
-            'output_file': output_file,
-            'reason': reason
-        })
+        context = kwargs.get("context", {})
+        context.update(
+            {
+                "engine": engine,
+                "input_file": input_file,
+                "output_file": output_file,
+                "reason": reason,
+            }
+        )
 
         message = f"PDF export failed using {engine}"
         if reason:
             message += f": {reason}"
 
-        recovery_hint = kwargs.get('recovery_hint') or (
+        recovery_hint = kwargs.get("recovery_hint") or (
             "Try alternative PDF engine (LibreOffice, Pandoc, or WeasyPrint)"
         )
 
-        super().__init__(
-            message=message,
-            context=context,
-            recovery_hint=recovery_hint
-        )
+        super().__init__(message=message, context=context, recovery_hint=recovery_hint)
 
         self.engine = engine
         self.input_file = input_file
@@ -210,13 +187,7 @@ class ValidationError(DraftGenerationError):
     User should fix input data or configuration.
     """
 
-    def __init__(
-        self,
-        field: str,
-        value: Any,
-        constraint: str,
-        **kwargs
-    ):
+    def __init__(self, field: str, value: Any, constraint: str, **kwargs):
         """
         Initialize validation error.
 
@@ -226,24 +197,16 @@ class ValidationError(DraftGenerationError):
             constraint: The constraint that was violated (e.g., "must be >= 1900")
             **kwargs: Additional context passed to base class
         """
-        context = kwargs.get('context', {})
-        context.update({
-            'field': field,
-            'value': value,
-            'constraint': constraint
-        })
+        context = kwargs.get("context", {})
+        context.update({"field": field, "value": value, "constraint": constraint})
 
         message = f"Validation failed for '{field}': {constraint} (got: {value})"
 
-        recovery_hint = kwargs.get('recovery_hint') or (
+        recovery_hint = kwargs.get("recovery_hint") or (
             f"Fix '{field}' to satisfy constraint: {constraint}"
         )
 
-        super().__init__(
-            message=message,
-            context=context,
-            recovery_hint=recovery_hint
-        )
+        super().__init__(message=message, context=context, recovery_hint=recovery_hint)
 
         self.field = field
         self.value = value
@@ -258,12 +221,7 @@ class ConfigurationError(DraftGenerationError):
     User should fix configuration before proceeding.
     """
 
-    def __init__(
-        self,
-        config_key: str,
-        issue: str,
-        **kwargs
-    ):
+    def __init__(self, config_key: str, issue: str, **kwargs):
         """
         Initialize configuration error.
 
@@ -272,23 +230,16 @@ class ConfigurationError(DraftGenerationError):
             issue: Description of the configuration issue
             **kwargs: Additional context passed to base class
         """
-        context = kwargs.get('context', {})
-        context.update({
-            'config_key': config_key,
-            'issue': issue
-        })
+        context = kwargs.get("context", {})
+        context.update({"config_key": config_key, "issue": issue})
 
         message = f"Configuration error for '{config_key}': {issue}"
 
-        recovery_hint = kwargs.get('recovery_hint') or (
+        recovery_hint = kwargs.get("recovery_hint") or (
             f"Set '{config_key}' in config.py or .env file"
         )
 
-        super().__init__(
-            message=message,
-            context=context,
-            recovery_hint=recovery_hint
-        )
+        super().__init__(message=message, context=context, recovery_hint=recovery_hint)
 
         self.config_key = config_key
         self.issue = issue
@@ -302,13 +253,7 @@ class NetworkError(DraftGenerationError):
     System should retry with exponential backoff or use cached data.
     """
 
-    def __init__(
-        self,
-        endpoint: str,
-        reason: Optional[str] = None,
-        retry_count: int = 0,
-        **kwargs
-    ):
+    def __init__(self, endpoint: str, reason: Optional[str] = None, retry_count: int = 0, **kwargs):
         """
         Initialize network error.
 
@@ -318,12 +263,8 @@ class NetworkError(DraftGenerationError):
             retry_count: Number of retries already attempted
             **kwargs: Additional context passed to base class
         """
-        context = kwargs.get('context', {})
-        context.update({
-            'endpoint': endpoint,
-            'reason': reason,
-            'retry_count': retry_count
-        })
+        context = kwargs.get("context", {})
+        context.update({"endpoint": endpoint, "reason": reason, "retry_count": retry_count})
 
         message = f"Network error connecting to {endpoint}"
         if reason:
@@ -331,15 +272,11 @@ class NetworkError(DraftGenerationError):
         if retry_count > 0:
             message += f" (after {retry_count} retries)"
 
-        recovery_hint = kwargs.get('recovery_hint') or (
+        recovery_hint = kwargs.get("recovery_hint") or (
             "Check network connectivity and retry, or use cached data"
         )
 
-        super().__init__(
-            message=message,
-            context=context,
-            recovery_hint=recovery_hint
-        )
+        super().__init__(message=message, context=context, recovery_hint=recovery_hint)
 
         self.endpoint = endpoint
         self.reason = reason
@@ -354,13 +291,7 @@ class FileOperationError(DraftGenerationError):
     User should check file permissions and available disk space.
     """
 
-    def __init__(
-        self,
-        file_path: str,
-        operation: str,
-        reason: Optional[str] = None,
-        **kwargs
-    ):
+    def __init__(self, file_path: str, operation: str, reason: Optional[str] = None, **kwargs):
         """
         Initialize file operation error.
 
@@ -370,26 +301,18 @@ class FileOperationError(DraftGenerationError):
             reason: Reason for failure (e.g., "Permission denied", "Disk full")
             **kwargs: Additional context passed to base class
         """
-        context = kwargs.get('context', {})
-        context.update({
-            'file_path': file_path,
-            'operation': operation,
-            'reason': reason
-        })
+        context = kwargs.get("context", {})
+        context.update({"file_path": file_path, "operation": operation, "reason": reason})
 
         message = f"File {operation} failed for {file_path}"
         if reason:
             message += f": {reason}"
 
-        recovery_hint = kwargs.get('recovery_hint') or (
+        recovery_hint = kwargs.get("recovery_hint") or (
             "Check file permissions and available disk space"
         )
 
-        super().__init__(
-            message=message,
-            context=context,
-            recovery_hint=recovery_hint
-        )
+        super().__init__(message=message, context=context, recovery_hint=recovery_hint)
 
         self.file_path = file_path
         self.operation = operation

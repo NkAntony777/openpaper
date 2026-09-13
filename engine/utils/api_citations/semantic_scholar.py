@@ -5,7 +5,8 @@ ABOUTME: Secondary citation source with 200M+ papers and better keyword search
 """
 
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
+
 from .base import BaseAPIClient
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ class SemanticScholarClient(BaseAPIClient):
         import os
 
         # Use provided key or fall back to environment variable
-        self.s2_api_key = api_key or os.getenv('SEMANTIC_SCHOLAR_API_KEY')
+        self.s2_api_key = api_key or os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 
         # With API key: higher rate limit (100/sec allowed, we use 10 to be safe)
         # Without API key: lower rate limit (1/sec enforced by S2)
@@ -50,7 +51,9 @@ class SemanticScholarClient(BaseAPIClient):
         else:
             # Without key, S2 enforces 1 req/sec - use 0.5 to be safe
             rate_limit_per_second = 0.5
-            logger.debug("Semantic Scholar: No API key, using conservative rate limit (0.5 req/sec)")
+            logger.debug(
+                "Semantic Scholar: No API key, using conservative rate limit (0.5 req/sec)"
+            )
 
         super().__init__(
             base_url="https://api.semanticscholar.org",
@@ -246,7 +249,10 @@ class SemanticScholarClient(BaseAPIClient):
             # Guess from venue name
             if venue:
                 venue_lower = venue.lower()
-                if any(keyword in venue_lower for keyword in ["conference", "proceedings", "workshop", "symposium"]):
+                if any(
+                    keyword in venue_lower
+                    for keyword in ["conference", "proceedings", "workshop", "symposium"]
+                ):
                     return "conference"
             return "journal"  # Default
 

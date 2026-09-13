@@ -14,32 +14,46 @@ Statistical Goals:
 """
 
 import random
-import pytest
 import statistics
-from pathlib import Path
-from typing import List, Tuple
-
 import sys
+from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
+from phases.context import DraftContext
 from utils.quality_gate import (
-    score_draft_quality,
-    _count_words,
-    _score_word_count,
     _score_citations,
     _score_completeness,
     _score_structure,
-    QualityScore,
+    _score_word_count,
+    score_draft_quality,
 )
-from phases.context import DraftContext
 
 
 def _generate_random_content(word_count: int, include_headers: bool = True) -> str:
     """Generate random academic-like content with specified word count."""
-    words = ["research", "analysis", "study", "method", "results", "data",
-             "findings", "evidence", "literature", "theory", "framework",
-             "approach", "investigation", "hypothesis", "conclusion",
-             "significant", "demonstrates", "indicates", "suggests", "reveals"]
+    words = [
+        "research",
+        "analysis",
+        "study",
+        "method",
+        "results",
+        "data",
+        "findings",
+        "evidence",
+        "literature",
+        "theory",
+        "framework",
+        "approach",
+        "investigation",
+        "hypothesis",
+        "conclusion",
+        "significant",
+        "demonstrates",
+        "indicates",
+        "suggests",
+        "reveals",
+    ]
 
     content_lines = []
 
@@ -81,11 +95,11 @@ def _create_randomized_context(
     ctx = DraftContext()
     ctx.academic_level = academic_level
     ctx.word_targets = {
-        'research_paper': {'min_citations': 10},
-        'bachelor': {'min_citations': 20},
-        'master': {'min_citations': 40},
-        'phd': {'min_citations': 80},
-    }.get(academic_level, {'min_citations': 10})
+        "research_paper": {"min_citations": 10},
+        "bachelor": {"min_citations": 20},
+        "master": {"min_citations": 40},
+        "phd": {"min_citations": 80},
+    }.get(academic_level, {"min_citations": 10})
 
     # Generate content
     ctx.intro_output = _generate_random_content(intro_words)
@@ -93,7 +107,9 @@ def _create_randomized_context(
     ctx.conclusion_output = _generate_random_content(conclusion_words)
 
     # Add citations evenly distributed
-    citation_spacing = max(1, (intro_words + body_words + conclusion_words) // max(1, citation_count))
+    _citation_spacing = max(
+        1, (intro_words + body_words + conclusion_words) // max(1, citation_count)
+    )
 
     for i in range(1, citation_count + 1):
         citation_ref = f" {{cite_{i:03d}}}"
@@ -105,10 +121,16 @@ def _create_randomized_context(
             ctx.conclusion_output += citation_ref
 
     # Add other sections
-    ctx.lit_review_output = _generate_random_content(max(100, body_words // 5), include_headers=False)
-    ctx.methodology_output = _generate_random_content(max(100, body_words // 5), include_headers=False)
+    ctx.lit_review_output = _generate_random_content(
+        max(100, body_words // 5), include_headers=False
+    )
+    ctx.methodology_output = _generate_random_content(
+        max(100, body_words // 5), include_headers=False
+    )
     ctx.results_output = _generate_random_content(max(100, body_words // 5), include_headers=False)
-    ctx.discussion_output = _generate_random_content(max(100, body_words // 5), include_headers=False)
+    ctx.discussion_output = _generate_random_content(
+        max(100, body_words // 5), include_headers=False
+    )
 
     return ctx
 
@@ -300,7 +322,7 @@ class TestEdgeCaseConsistency:
         for _ in range(10):
             ctx = DraftContext()
             ctx.academic_level = "research_paper"
-            ctx.word_targets = {'min_citations': 10}
+            ctx.word_targets = {"min_citations": 10}
             ctx.intro_output = ""
             ctx.body_output = ""
             ctx.conclusion_output = ""
@@ -396,7 +418,7 @@ class TestAcademicLevelConsistency:
 
         # Same content for PhD should score lower
         base_ctx.academic_level = "phd"
-        base_ctx.word_targets = {'min_citations': 80}
+        base_ctx.word_targets = {"min_citations": 80}
 
         phd_result = score_draft_quality(base_ctx)
 
@@ -501,9 +523,11 @@ class TestComponentScoreRanges:
 
             # Verify sum matches
             expected = (
-                result.word_count_score +
-                result.citation_score +
-                result.completeness_score +
-                result.structure_score
+                result.word_count_score
+                + result.citation_score
+                + result.completeness_score
+                + result.structure_score
             )
-            assert result.total_score == expected, f"Sum mismatch: {result.total_score} != {expected}"
+            assert result.total_score == expected, (
+                f"Sum mismatch: {result.total_score} != {expected}"
+            )

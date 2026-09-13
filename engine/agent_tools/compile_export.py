@@ -15,7 +15,7 @@ from typing import Dict
 
 from agent_tools import registry
 from agent_tools.common import BIBLIOGRAPHY_REL, CHECKPOINT_NAME
-from agent_tools.envelope import ok, fail
+from agent_tools.envelope import fail, ok
 from phases.context import DraftContext
 
 BIBLIOGRAPHY_NAME = BIBLIOGRAPHY_REL.split("/")[-1]
@@ -33,7 +33,8 @@ def _quiet_stdout():
     """
     root_logger = logging.getLogger()
     stdout_handlers = [
-        h for h in list(root_logger.handlers)
+        h
+        for h in list(root_logger.handlers)
         if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stdout
     ]
     for h in stdout_handlers:
@@ -44,6 +45,7 @@ def _quiet_stdout():
     finally:
         for h in stdout_handlers:
             root_logger.addHandler(h)
+
 
 DESCRIPTION = (
     "Compile and export the finished draft. Prerequisites: a pipeline-produced "
@@ -66,8 +68,8 @@ INPUT_SCHEMA = {
             "enum": list(FORMATS),
             "default": "all",
             "description": "Which export path(s) to report: 'md', 'pdf', 'docx' or 'all' "
-                           "(default). The full compile always runs; this only filters the "
-                           "reported outputs.",
+            "(default). The full compile always runs; this only filters the "
+            "reported outputs.",
         },
     },
 }
@@ -106,9 +108,9 @@ def run(args: Dict, root: Path) -> Dict:
 
     try:
         from config import get_config
-        from utils.agent_runner import setup_model
-        from utils.citation_database import load_citation_database
         from phases.compile import run_compile_and_export
+        from utils.citation_database import load_citation_database
+        from utils.llm_runtime import setup_model
 
         with _quiet_stdout():
             ctx = DraftContext()
@@ -151,18 +153,22 @@ def run(args: Dict, root: Path) -> Dict:
                 is_retryable=False,
             )
 
-        return ok({
-            "format": fmt,
-            "exports": found,
-            "completed_phase": completed_phase,
-        })
+        return ok(
+            {
+                "format": fmt,
+                "exports": found,
+                "completed_phase": completed_phase,
+            }
+        )
     except Exception as e:
         return fail(f"compile/export failed: {type(e).__name__}: {e}", is_retryable=False)
 
 
-registry.register(registry.ToolSpec(
-    name="compile_draft",
-    description=DESCRIPTION,
-    input_schema=INPUT_SCHEMA,
-    func=run,
-))
+registry.register(
+    registry.ToolSpec(
+        name="compile_draft",
+        description=DESCRIPTION,
+        input_schema=INPUT_SCHEMA,
+        func=run,
+    )
+)

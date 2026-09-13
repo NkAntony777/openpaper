@@ -6,17 +6,17 @@ ABOUTME: Allows revising existing drafts with specific instructions using Gemini
 Ported from V3 with simplifications for V1's lighter architecture.
 """
 
-import re
 import logging
+import re
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from config import get_config
-from utils.export_professional import export_pdf, export_docx
-from utils.retry import get_gemini_circuit_breaker
-from utils.openai_client import OpenAIModelWrapper
+from utils.export_professional import export_docx, export_pdf
 from utils.gemini_client import GeminiModelWrapper
+from utils.openai_client import OpenAIModelWrapper
+from utils.retry import get_gemini_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -41,32 +41,41 @@ def find_draft_in_folder(folder: Path) -> Optional[Path]:
         md_files = [f for f in exports_dir.glob("*.md") if _is_safe_file(f, folder)]
 
         # Filter out intermediate/temp files and hidden files
-        export_files = [f for f in md_files if not any(
-            x in f.name.lower() for x in ['intermediate', 'abstract', 'temp', '_generated']
-        ) and not f.name.startswith(('_', '.')) and not f.is_symlink()]
+        export_files = [
+            f
+            for f in md_files
+            if not any(
+                x in f.name.lower() for x in ["intermediate", "abstract", "temp", "_generated"]
+            )
+            and not f.name.startswith(("_", "."))
+            and not f.is_symlink()
+        ]
 
         if export_files:
             # Prefer final_draft.md if it exists
             for f in export_files:
-                if 'final_draft' in f.name.lower():
+                if "final_draft" in f.name.lower():
                     return f
             # Otherwise return the largest export file
             return max(export_files, key=lambda p: p.stat().st_size)
 
         # Fallback to any MD file (excluding numbered/hidden files)
-        non_numbered = [f for f in md_files
-                        if not f.name[0].isdigit()
-                        and not f.name.startswith(('.', '_'))
-                        and not f.is_symlink()]
+        non_numbered = [
+            f
+            for f in md_files
+            if not f.name[0].isdigit() and not f.name.startswith((".", "_")) and not f.is_symlink()
+        ]
         if non_numbered:
             return max(non_numbered, key=lambda p: p.stat().st_size)
 
     # Check drafts/ subfolder
     drafts_dir = folder / "drafts"
     if drafts_dir.exists():
-        md_files = [f for f in drafts_dir.glob("*.md")
-                    if _is_safe_file(f, folder) and not f.is_symlink()
-                    and not f.name.startswith(('.', '_'))]
+        md_files = [
+            f
+            for f in drafts_dir.glob("*.md")
+            if _is_safe_file(f, folder) and not f.is_symlink() and not f.name.startswith((".", "_"))
+        ]
         if md_files:
             return max(md_files, key=lambda p: p.stat().st_size)
 
@@ -77,16 +86,20 @@ def find_draft_in_folder(folder: Path) -> Optional[Path]:
             return candidate
 
     # Last resort: largest MD in root (excluding hidden/symlinks)
-    md_files = [f for f in folder.glob("*.md")
-                if _is_safe_file(f, folder) and not f.is_symlink()
-                and not f.name.startswith(('.', '_'))]
+    md_files = [
+        f
+        for f in folder.glob("*.md")
+        if _is_safe_file(f, folder) and not f.is_symlink() and not f.name.startswith((".", "_"))
+    ]
     if md_files:
         return max(md_files, key=lambda p: p.stat().st_size)
 
     return None
 
 
-def call_gemini_revise(draft: str, instructions: str, model: str = "gemini-3-flash-preview", max_retries: int = 3) -> str:
+def call_gemini_revise(
+    draft: str, instructions: str, model: str = "gemini-3-flash-preview", max_retries: int = 3
+) -> str:
     """
     Call Gemini to revise a draft based on instructions.
 
@@ -148,7 +161,9 @@ Return the complete revised draft below:
                 try:
                     from google import genai
                 except ImportError:
-                    raise ImportError("google-genai required. Install with: pip install google-genai")
+                    raise ImportError(
+                        "google-genai required. Install with: pip install google-genai"
+                    ) from None
 
                 client = genai.Client(api_key=config.google_api_key)
                 llm = GeminiModelWrapper(client, model, temperature=0.7)
@@ -160,7 +175,14 @@ Return the complete revised draft below:
             last_error = e
             error_str = str(e).lower()
             # Check if transient error
-            transient_patterns = ['rate limit', '429', 'timeout', 'connection', 'overloaded', 'capacity']
+            transient_patterns = [
+                "rate limit",
+                "429",
+                "timeout",
+                "connection",
+                "overloaded",
+                "capacity",
+            ]
             is_transient = any(p in error_str for p in transient_patterns)
 
             if is_transient and attempt < max_retries - 1:
@@ -178,7 +200,7 @@ Return the complete revised draft below:
 
     # Clean up any markdown code blocks if Gemini wrapped the response
     if revised.startswith("```markdown"):
-        revised = revised[len("```markdown"):].strip()
+        revised = revised[len("```markdown") :].strip()
     if revised.startswith("```"):
         revised = revised[3:].strip()
     if revised.endswith("```"):
@@ -222,25 +244,31 @@ def score_draft_simple(text: str) -> Dict[str, Any]:
         word_score = min(30, 25 + int((word_count - 1500) / 1500 * 5))
 
     # Citations (25 points) - detect both {cite_X} and (Author, Year) formats
-    cite_format = len(re.findall(r'\{cite_\d+\}', text))
+    cite_format = len(re.findall(r"\{cite_\d+\}", text))
     # Match various parenthetical citation formats:
     # (Smith, 2020), (Smith & Jones, 2020), (Smith et al., 2020)
-    parenthetical = len(re.findall(
-        r'\([A-Z][a-z]+(?:\s+(?:&|and)\s+[A-Z][a-z]+|\s+et\s+al\.?)?,?\s*\d{4}\)',
-        text
-    ))
+    parenthetical = len(
+        re.findall(r"\([A-Z][a-z]+(?:\s+(?:&|and)\s+[A-Z][a-z]+|\s+et\s+al\.?)?,?\s*\d{4}\)", text)
+    )
     citations = cite_format + parenthetical
     # Proportional: 1 citation = ~1.67 points, caps at 15 citations
     citation_score = min(25, int((citations / 15) * 25))
 
     # Structure (25 points) - headers, proportional
-    headers = len(re.findall(r'^#{1,3}\s+.+$', text, re.MULTILINE))
+    headers = len(re.findall(r"^#{1,3}\s+.+$", text, re.MULTILINE))
     # Proportional: 1 header = ~4.2 points, caps at 6 headers
     structure_score = min(25, int((headers / 6) * 25))
 
     # Completeness (20 points) - key sections
     sections_found = 0
-    for keyword in ['introduction', 'literature', 'methodology', 'results', 'conclusion', 'discussion']:
+    for keyword in [
+        "introduction",
+        "literature",
+        "methodology",
+        "results",
+        "conclusion",
+        "discussion",
+    ]:
         if keyword.lower() in text.lower():
             sections_found += 1
     completeness_score = min(20, sections_found * 4)
@@ -248,15 +276,15 @@ def score_draft_simple(text: str) -> Dict[str, Any]:
     score = word_score + citation_score + structure_score + completeness_score
 
     return {
-        'overall_score': min(100, score),
-        'word_count': word_count,
-        'word_score': word_score,
-        'citations': citations,
-        'citation_score': citation_score,
-        'headers': headers,
-        'structure_score': structure_score,
-        'sections_found': sections_found,
-        'completeness_score': completeness_score,
+        "overall_score": min(100, score),
+        "word_count": word_count,
+        "word_score": word_score,
+        "citations": citations,
+        "citation_score": citation_score,
+        "headers": headers,
+        "structure_score": structure_score,
+        "sections_found": sections_found,
+        "completeness_score": completeness_score,
     }
 
 
@@ -294,7 +322,7 @@ def revise_draft(
     logger.info(f"Revising: {draft_path}")
 
     # Read current draft
-    draft_text = draft_path.read_text(encoding='utf-8')
+    draft_text = draft_path.read_text(encoding="utf-8")
 
     # Score before
     score_before = score_draft_simple(draft_text)
@@ -310,7 +338,7 @@ def revise_draft(
     # Determine output filenames
     base_name = draft_path.stem
     # Remove existing version suffix if present
-    base_name = re.sub(r'_v\d+$', '', base_name)
+    base_name = re.sub(r"_v\d+$", "", base_name)
 
     # Auto-detect next version if not specified
     if version_suffix is None:
@@ -325,11 +353,10 @@ def revise_draft(
     docx_path = output_dir / docx_name
 
     # Save revised markdown
-    md_path.write_text(revised_text, encoding='utf-8')
+    md_path.write_text(revised_text, encoding="utf-8")
     logger.info(f"Saved: {md_path}")
 
     # Export PDF
-    title = base_name.replace("_", " ").title()
     if export_pdf(md_path, pdf_path):
         logger.info(f"Exported: {pdf_path}")
     else:
@@ -344,17 +371,17 @@ def revise_draft(
         docx_path = None
 
     # Calculate delta
-    delta = score_after['overall_score'] - score_before['overall_score']
+    delta = score_after["overall_score"] - score_before["overall_score"]
 
     return {
-        'md_path': md_path,
-        'pdf_path': pdf_path,
-        'docx_path': docx_path,
-        'score_before': score_before['overall_score'],
-        'score_after': score_after['overall_score'],
-        'delta': delta,
-        'word_count': len(revised_text.split()),
-        'word_count_before': score_before['word_count'],
-        'citations_before': score_before['citations'],
-        'citations_after': score_after['citations'],
+        "md_path": md_path,
+        "pdf_path": pdf_path,
+        "docx_path": docx_path,
+        "score_before": score_before["overall_score"],
+        "score_after": score_after["overall_score"],
+        "delta": delta,
+        "word_count": len(revised_text.split()),
+        "word_count_before": score_before["word_count"],
+        "citations_before": score_before["citations"],
+        "citations_after": score_after["citations"],
     }

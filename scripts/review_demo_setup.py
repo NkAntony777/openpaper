@@ -1,4 +1,7 @@
-import json, shutil, subprocess, sys, tempfile
+import json
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).parent.parent
@@ -21,15 +24,26 @@ print("demo root:", root, flush=True)
 
 def tool(name, args):
     r = subprocess.run(
-        [str(PY), "-c",
-         f"import sys; sys.path.insert(0, r'{REPO / 'engine'}'); "
-         f"from opendraft.cli import run_tool_command; "
-         f"sys.exit(run_tool_command([{name!r}, '--root', r'{root}', '--args-file', r'{args}']))"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=REPO)
+        [
+            str(PY),
+            "-c",
+            f"import sys; sys.path.insert(0, r'{REPO / 'engine'}'); "
+            f"from opendraft.cli import run_tool_command; "
+            f"sys.exit(run_tool_command([{name!r}, '--root', r'{root}', '--args-file', r'{args}']))",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=REPO,
+    )
     line = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "{}"
     env = json.loads(line)
-    print(f"[{'OK' if env.get('ok') else 'FAIL'}] {name} "
-          f"{'' if env.get('ok') else env.get('error', '')[:200]}", flush=True)
+    print(
+        f"[{'OK' if env.get('ok') else 'FAIL'}] {name} "
+        f"{'' if env.get('ok') else env.get('error', '')[:200]}",
+        flush=True,
+    )
     return env
 
 
@@ -89,9 +103,11 @@ reports the main comparison and ablations. Section 5 discusses what the results
 mean for practitioners, and Section 6 concludes.
 """
 
-INTRO_SUMMARY = ("Introduces domain QA problem and RAG baseline {cite_001}; contributions: "
-                 "(1) sparse-vs-dense retriever benchmark, (2) an ITERATIVE retrieval-generation "
-                 "method {cite_011}, (3) latency-cost analysis. Uses standard term RAG throughout.")
+INTRO_SUMMARY = (
+    "Introduces domain QA problem and RAG baseline {cite_001}; contributions: "
+    "(1) sparse-vs-dense retriever benchmark, (2) an ITERATIVE retrieval-generation "
+    "method {cite_011}, (3) latency-cost analysis. Uses standard term RAG throughout."
+)
 
 METHOD = """## 3 Methodology
 
@@ -151,18 +167,42 @@ generator, which keeps the full system within the resource envelope of a small
 engineering team without dedicated serving infrastructure.
 """
 
-METHOD_SUMMARY = ("Presents NRQA pipeline: EXCLUSIVELY BM25 sparse retrieval {cite_009}, dense "
-                  "retrievers (DPR {cite_002}) found no benefit; SINGLE-SHOT retrieval (no "
-                  "interleaving), fusion-in-decoder {cite_004}. Metrics: accuracy, citation "
-                  "precision, latency; baselines and ablations described.")
+METHOD_SUMMARY = (
+    "Presents NRQA pipeline: EXCLUSIVELY BM25 sparse retrieval {cite_009}, dense "
+    "retrievers (DPR {cite_002}) found no benefit; SINGLE-SHOT retrieval (no "
+    "interleaving), fusion-in-decoder {cite_004}. Metrics: accuracy, citation "
+    "precision, latency; baselines and ablations described."
+)
 
-tool("write_section", tmp_args({"section": "introduction", "content": INTRO,
-                                "citations_used": ["cite_001", "cite_002", "cite_006", "cite_007",
-                                                   "cite_011", "cite_012"],
-                                "summary": INTRO_SUMMARY}))
-tool("write_section", tmp_args({"section": "methodology", "content": METHOD,
-                                "citations_used": ["cite_009", "cite_002", "cite_004"],
-                                "summary": METHOD_SUMMARY}))
+tool(
+    "write_section",
+    tmp_args(
+        {
+            "section": "introduction",
+            "content": INTRO,
+            "citations_used": [
+                "cite_001",
+                "cite_002",
+                "cite_006",
+                "cite_007",
+                "cite_011",
+                "cite_012",
+            ],
+            "summary": INTRO_SUMMARY,
+        }
+    ),
+)
+tool(
+    "write_section",
+    tmp_args(
+        {
+            "section": "methodology",
+            "content": METHOD,
+            "citations_used": ["cite_009", "cite_002", "cite_004"],
+            "summary": METHOD_SUMMARY,
+        }
+    ),
+)
 tool("score_draft", tmp_args({"scope": "section", "section": "introduction"}))
 tool("score_draft", tmp_args({"scope": "section", "section": "methodology"}))
 
@@ -171,7 +211,10 @@ for f in root.glob(".args_*.json"):
 
 status = json.loads((root / "section_status.json").read_text(encoding="utf-8"))
 print("ledger sections:", list(status.get("sections", {})), flush=True)
-print("ledger intro:", {k: status["sections"]["introduction"].get(k)
-                        for k in ("status", "words", "passed")}, flush=True)
+print(
+    "ledger intro:",
+    {k: status["sections"]["introduction"].get(k) for k in ("status", "words", "passed")},
+    flush=True,
+)
 print("SETUP DONE", flush=True)
 print(root, flush=True)

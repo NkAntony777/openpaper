@@ -7,6 +7,7 @@ loop was designed around (design doc §11 "loop 测试（mock）").
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,7 +27,6 @@ from harness.paper_map import write_paper_map
 from harness.paper_task import PaperBudget, PaperResult, parse_global_issues, run_paper
 from harness.review_task import NO_ISSUES_TEXT
 from harness.section_task import build_section_prompt
-
 
 # --------------------------------------------------------------------------- fakes
 
@@ -68,22 +68,45 @@ class FakeFeed:
             self.stats_requests += 1
             n = self.stats_requests
             if n in self.stats_errors:
-                self.script.append(json.dumps({
-                    "type": "response", "id": cmd["id"], "command": "get_session_stats",
-                    "success": False, "error": "stats unavailable",
-                }))
+                self.script.append(
+                    json.dumps(
+                        {
+                            "type": "response",
+                            "id": cmd["id"],
+                            "command": "get_session_stats",
+                            "success": False,
+                            "error": "stats unavailable",
+                        }
+                    )
+                )
             else:
                 cost = self.stats_costs.get(n, 0.01)
-                self.script.append(json.dumps({
-                    "type": "response", "id": cmd["id"], "command": "get_session_stats",
-                    "success": True,
-                    "data": {"cost": cost, "tokens": {"input": 10, "output": 5, "total": 15}},
-                }))
+                self.script.append(
+                    json.dumps(
+                        {
+                            "type": "response",
+                            "id": cmd["id"],
+                            "command": "get_session_stats",
+                            "success": True,
+                            "data": {
+                                "cost": cost,
+                                "tokens": {"input": 10, "output": 5, "total": 15},
+                            },
+                        }
+                    )
+                )
         elif cmd_type == "get_last_assistant_text":
-            self.script.append(json.dumps({
-                "type": "response", "id": cmd["id"], "command": "get_last_assistant_text",
-                "success": True, "data": {"text": "FAKE FINAL TEXT"},
-            }))
+            self.script.append(
+                json.dumps(
+                    {
+                        "type": "response",
+                        "id": cmd["id"],
+                        "command": "get_last_assistant_text",
+                        "success": True,
+                        "data": {"text": "FAKE FINAL TEXT"},
+                    }
+                )
+            )
 
     def next_line(self, timeout):
         if self.script:
@@ -127,22 +150,34 @@ def test_paper_map_empty_dir(tmp_path):
 
 
 def test_paper_map_full_fixture(tmp_path):
-    write_checkpoint(tmp_path, {
-        "topic": "AI in education",
-        "academic_level": "master",
-        "citation_style": "apa",
-        "language": "en",
-        "completed_phase": "structure",
-        "word_targets": {"literature_review": "2000-2500", "methodology": 1500},
-    })
+    write_checkpoint(
+        tmp_path,
+        {
+            "topic": "AI in education",
+            "academic_level": "master",
+            "citation_style": "apa",
+            "language": "en",
+            "completed_phase": "structure",
+            "word_targets": {"literature_review": "2000-2500", "methodology": 1500},
+        },
+    )
     (tmp_path / "drafts").mkdir()
     (tmp_path / "drafts" / "00_formatted_outline.md").write_text(
-        "# Outline\n1. Intro\n2. Lit", "utf-8")
+        "# Outline\n1. Intro\n2. Lit", "utf-8"
+    )
     (tmp_path / "drafts" / "02_1_literature_review.md").write_text("some words here", "utf-8")
     (tmp_path / "research").mkdir()
-    (tmp_path / "research" / "bibliography.json").write_text(json.dumps({
-        "citations": [{"id": "cite_001", "year": 2019}, {"id": "cite_002", "year": 2021}],
-    }), "utf-8")
+    (tmp_path / "research" / "bibliography.json").write_text(
+        json.dumps(
+            {
+                "citations": [
+                    {"id": "cite_001", "year": 2019},
+                    {"id": "cite_002", "year": 2021},
+                ],
+            }
+        ),
+        "utf-8",
+    )
 
     write_paper_map(tmp_path)
     text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
@@ -165,14 +200,29 @@ def test_event_loop_settled_path(tmp_path, journal):
         events=[
             {"type": "agent_start"},
             {"type": "turn_start"},
-            {"type": "message_update",
-             "usage": {"input": 5, "output": 2, "cost": {"total": 0.01}},
-             "assistantMessageEvent": {"type": "text_delta", "contentIndex": 0, "delta": "hi"}},
+            {
+                "type": "message_update",
+                "usage": {"input": 5, "output": 2, "cost": {"total": 0.01}},
+                "assistantMessageEvent": {
+                    "type": "text_delta",
+                    "contentIndex": 0,
+                    "delta": "hi",
+                },
+            },
             {"type": "turn_end", "message": {}, "toolResults": []},
-            {"type": "tool_execution_start", "toolCallId": "c1", "toolName": "write_section",
-             "args": {"section": "literature_review", "content": "x" * 300}},
-            {"type": "tool_execution_end", "toolCallId": "c1", "toolName": "write_section",
-             "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": False},
+            {
+                "type": "tool_execution_start",
+                "toolCallId": "c1",
+                "toolName": "write_section",
+                "args": {"section": "literature_review", "content": "x" * 300},
+            },
+            {
+                "type": "tool_execution_end",
+                "toolCallId": "c1",
+                "toolName": "write_section",
+                "result": {"content": [{"type": "text", "text": "ok"}]},
+                "isError": False,
+            },
             {"type": "agent_settled"},
         ],
         clock=clock,
@@ -180,8 +230,11 @@ def test_event_loop_settled_path(tmp_path, journal):
     )
     driver = PiDriver(tmp_path)
     state = driver._event_loop(
-        feed.next_line, feed.send, journal,
-        on_terminate=feed.on_terminate, clock=clock,
+        feed.next_line,
+        feed.send,
+        journal,
+        on_terminate=feed.on_terminate,
+        clock=clock,
     )
 
     assert state.settled is True
@@ -205,12 +258,22 @@ def test_event_loop_settled_path(tmp_path, journal):
 def test_event_loop_cost_budget_steer_abort(tmp_path, journal):
     clock = FakeClock()
     feed = FakeFeed(clock=clock, stats_costs={1: 0.50})
-    driver = PiDriver(tmp_path, budget=BudgetConfig(
-        max_cost_usd=0.10, max_turns=40, max_seconds=900, poll_interval_s=5, steer_grace_s=60,
-    ))
+    driver = PiDriver(
+        tmp_path,
+        budget=BudgetConfig(
+            max_cost_usd=0.10,
+            max_turns=40,
+            max_seconds=900,
+            poll_interval_s=5,
+            steer_grace_s=60,
+        ),
+    )
     state = driver._event_loop(
-        feed.next_line, feed.send, journal,
-        on_terminate=feed.on_terminate, clock=clock,
+        feed.next_line,
+        feed.send,
+        journal,
+        on_terminate=feed.on_terminate,
+        clock=clock,
     )
 
     assert state.settled is False
@@ -230,12 +293,22 @@ def test_event_loop_turns_budget(tmp_path, journal):
         events=[{"type": "turn_end", "message": {}, "toolResults": []} for _ in range(3)],
         clock=clock,
     )
-    driver = PiDriver(tmp_path, budget=BudgetConfig(
-        max_cost_usd=10.0, max_turns=2, max_seconds=900, poll_interval_s=5, steer_grace_s=30,
-    ))
+    driver = PiDriver(
+        tmp_path,
+        budget=BudgetConfig(
+            max_cost_usd=10.0,
+            max_turns=2,
+            max_seconds=900,
+            poll_interval_s=5,
+            steer_grace_s=30,
+        ),
+    )
     state = driver._event_loop(
-        feed.next_line, feed.send, journal,
-        on_terminate=feed.on_terminate, clock=clock,
+        feed.next_line,
+        feed.send,
+        journal,
+        on_terminate=feed.on_terminate,
+        clock=clock,
     )
 
     assert state.budget_exceeded is True
@@ -248,12 +321,22 @@ def test_event_loop_turns_budget(tmp_path, journal):
 def test_event_loop_seconds_budget(tmp_path, journal):
     clock = FakeClock()
     feed = FakeFeed(clock=clock)  # silent pi: every read is a timeout tick
-    driver = PiDriver(tmp_path, budget=BudgetConfig(
-        max_cost_usd=10.0, max_turns=100, max_seconds=20, poll_interval_s=5, steer_grace_s=30,
-    ))
+    driver = PiDriver(
+        tmp_path,
+        budget=BudgetConfig(
+            max_cost_usd=10.0,
+            max_turns=100,
+            max_seconds=20,
+            poll_interval_s=5,
+            steer_grace_s=30,
+        ),
+    )
     state = driver._event_loop(
-        feed.next_line, feed.send, journal,
-        on_terminate=feed.on_terminate, clock=clock,
+        feed.next_line,
+        feed.send,
+        journal,
+        on_terminate=feed.on_terminate,
+        clock=clock,
     )
 
     assert state.budget_exceeded is True
@@ -288,12 +371,25 @@ def test_event_loop_extension_and_tool_errors_do_not_break(tmp_path, journal):
     clock = FakeClock()
     feed = FakeFeed(
         events=[
-            {"type": "extension_error", "extensionPath": "/x.ts", "event": "tool_call",
-             "error": "boom"},
-            {"type": "tool_execution_start", "toolCallId": "c9", "toolName": "search_literature",
-             "args": {"query": "ai in education"}},
-            {"type": "tool_execution_end", "toolCallId": "c9", "toolName": "search_literature",
-             "result": {"content": [{"type": "text", "text": "err"}]}, "isError": True},
+            {
+                "type": "extension_error",
+                "extensionPath": "/x.ts",
+                "event": "tool_call",
+                "error": "boom",
+            },
+            {
+                "type": "tool_execution_start",
+                "toolCallId": "c9",
+                "toolName": "search_literature",
+                "args": {"query": "ai in education"},
+            },
+            {
+                "type": "tool_execution_end",
+                "toolCallId": "c9",
+                "toolName": "search_literature",
+                "result": {"content": [{"type": "text", "text": "err"}]},
+                "isError": True,
+            },
             {"type": "agent_settled"},
         ],
         clock=clock,
@@ -310,8 +406,10 @@ def test_event_loop_extension_and_tool_errors_do_not_break(tmp_path, journal):
 def test_event_loop_stats_response_failure_tolerated(tmp_path, journal):
     clock = FakeClock()
     feed = FakeFeed(
-        events=[{"type": "turn_end", "message": {}, "toolResults": []},
-                {"type": "agent_settled"}],
+        events=[
+            {"type": "turn_end", "message": {}, "toolResults": []},
+            {"type": "agent_settled"},
+        ],
         clock=clock,
         stats_errors={1},  # first (poll) stats request fails
     )
@@ -325,16 +423,28 @@ def test_event_loop_stats_response_failure_tolerated(tmp_path, journal):
 def test_event_loop_steer_then_settle_is_ok_but_flagged(tmp_path, journal):
     clock = FakeClock()
     feed = FakeFeed(
-        events=[{"type": "turn_end", "message": {}, "toolResults": []},
-                {"type": "agent_settled"}],
+        events=[
+            {"type": "turn_end", "message": {}, "toolResults": []},
+            {"type": "agent_settled"},
+        ],
         clock=clock,
     )
-    driver = PiDriver(tmp_path, budget=BudgetConfig(
-        max_cost_usd=10.0, max_turns=0, max_seconds=900, poll_interval_s=5, steer_grace_s=60,
-    ))
+    driver = PiDriver(
+        tmp_path,
+        budget=BudgetConfig(
+            max_cost_usd=10.0,
+            max_turns=0,
+            max_seconds=900,
+            poll_interval_s=5,
+            steer_grace_s=60,
+        ),
+    )
     state = driver._event_loop(
-        feed.next_line, feed.send, journal,
-        on_terminate=feed.on_terminate, clock=clock,
+        feed.next_line,
+        feed.send,
+        journal,
+        on_terminate=feed.on_terminate,
+        clock=clock,
     )
 
     assert state.settled is True
@@ -361,7 +471,6 @@ def test_event_loop_eof_before_settled(tmp_path, journal):
 def test_run_full_wiring_with_fake_proc(tmp_path, monkeypatch):
     """run() with a fake proc: exercises the real reader thread, queue, send() and the
     prompt command — the seam that canned loop tests bypass."""
-    import io
     import threading
 
     scripted_events = [
@@ -408,16 +517,34 @@ def test_run_full_wiring_with_fake_proc(tmp_path, monkeypatch):
                 for ev in scripted_events:
                     self._stdout.feed(json.dumps(ev) + "\n")
             elif cmd.get("type") == "get_session_stats":
-                self._stdout.feed(json.dumps({
-                    "type": "response", "id": cmd["id"], "command": "get_session_stats",
-                    "success": True,
-                    "data": {"cost": 0.07, "tokens": {"input": 3, "output": 2, "total": 5}},
-                }) + "\n")
+                self._stdout.feed(
+                    json.dumps(
+                        {
+                            "type": "response",
+                            "id": cmd["id"],
+                            "command": "get_session_stats",
+                            "success": True,
+                            "data": {
+                                "cost": 0.07,
+                                "tokens": {"input": 3, "output": 2, "total": 5},
+                            },
+                        }
+                    )
+                    + "\n"
+                )
             elif cmd.get("type") == "get_last_assistant_text":
-                self._stdout.feed(json.dumps({
-                    "type": "response", "id": cmd["id"], "command": "get_last_assistant_text",
-                    "success": True, "data": {"text": "FAKE FINAL TEXT"},
-                }) + "\n")
+                self._stdout.feed(
+                    json.dumps(
+                        {
+                            "type": "response",
+                            "id": cmd["id"],
+                            "command": "get_last_assistant_text",
+                            "success": True,
+                            "data": {"text": "FAKE FINAL TEXT"},
+                        }
+                    )
+                    + "\n"
+                )
 
         def flush(self):
             pass
@@ -501,9 +628,14 @@ def test_prepare_installs_extension_and_paper_map(tmp_path):
 def test_driver_defaults_and_env_overrides(tmp_path, monkeypatch):
     monkeypatch.delenv("PI_MODEL", raising=False)
     monkeypatch.delenv("PI_BIN", raising=False)
+    monkeypatch.setattr(driver_mod.shutil, "which", lambda name: "C:/tools/pi.cmd")
     driver = PiDriver(tmp_path)
     assert driver.model == "minimax-cn/MiniMax-M3"
-    assert driver.pi_bin == driver_mod.DEFAULT_PI_BIN
+    assert driver.pi_bin == "C:/tools/pi.cmd"
+    # PATH miss falls back to the bare name — _spawn turns that into a readable failure
+    monkeypatch.setattr(driver_mod.shutil, "which", lambda name: None)
+    driver = PiDriver(tmp_path)
+    assert driver.pi_bin == "pi"
 
     monkeypatch.setenv("PI_MODEL", "minimax/other")
     monkeypatch.setenv("PI_BIN", "C:/custom/pi.cmd")
@@ -535,13 +667,16 @@ def test_build_env_maps_openai_key_to_minimax(tmp_path, monkeypatch):
 def _fixture_root(tmp_path):
     root = tmp_path / "out"
     root.mkdir()
-    write_checkpoint(root, {
-        "topic": "AI in education",
-        "academic_level": "master",
-        "citation_style": "apa",
-        "language": "en",
-        "word_targets": {"literature_review": "2000-2500"},
-    })
+    write_checkpoint(
+        root,
+        {
+            "topic": "AI in education",
+            "academic_level": "master",
+            "citation_style": "apa",
+            "language": "en",
+            "word_targets": {"literature_review": "2000-2500"},
+        },
+    )
     (root / "drafts").mkdir()
     (root / "drafts" / "00_formatted_outline.md").write_text("# Outline", "utf-8")
     (root / "research").mkdir()
@@ -559,8 +694,16 @@ def test_build_section_prompt(tmp_path):
     assert "AI in education" in prompt
     assert "2500" in prompt  # parsed max of the "2000-2500" target
     assert "drafts/02_1_literature_review.md" in prompt
-    for tool in ("read_artifact", "write_section", "score_draft", "search_literature",
-                 "verify_claims", "revise_section", "manage_claims", "write_outline"):
+    for tool in (
+        "read_artifact",
+        "write_section",
+        "score_draft",
+        "search_literature",
+        "verify_claims",
+        "revise_section",
+        "manage_claims",
+        "write_outline",
+    ):
         assert tool in prompt
     assert "AGENTS.md" in prompt
     assert "cite_XXX" in prompt
@@ -630,10 +773,19 @@ def test_cli_harness_success_envelope_on_stdout(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(driver_mod, "PiDriver", FakeDriver)
     from opendraft.cli import run_harness_command
 
-    rc = run_harness_command([
-        "section", "--root", str(tmp_path), "--section", "literature_review",
-        "--max-cost", "0.5", "--max-turns", "7",
-    ])
+    rc = run_harness_command(
+        [
+            "section",
+            "--root",
+            str(tmp_path),
+            "--section",
+            "literature_review",
+            "--max-cost",
+            "0.5",
+            "--max-turns",
+            "7",
+        ]
+    )
     assert rc == 0
 
     captured = capsys.readouterr()
@@ -675,9 +827,15 @@ def test_cli_harness_failure_envelope_on_stdout(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(driver_mod, "PiDriver", FakeDriver)
     from opendraft.cli import run_harness_command
 
-    rc = run_harness_command([
-        "section", "--root", str(tmp_path), "--section", "methodology",
-    ])
+    rc = run_harness_command(
+        [
+            "section",
+            "--root",
+            str(tmp_path),
+            "--section",
+            "methodology",
+        ]
+    )
     assert rc == 1
     captured = capsys.readouterr()
     payload = json.loads(captured.out.strip().splitlines()[-1])
@@ -691,15 +849,26 @@ def test_cli_harness_failure_envelope_on_stdout(tmp_path, monkeypatch, capsys):
 def test_event_loop_ui_request_dialog_auto_cancelled(tmp_path, journal):
     """extension_ui_request dialogs must never block an unattended run (design §8)."""
     clock = FakeClock()
-    feed = FakeFeed(events=[
-        {"type": "extension_ui_request", "id": "uuid-2", "method": "confirm",
-         "title": "Clear session?", "timeout": 5000},
-        {"type": "agent_settled"},
-    ], clock=clock)
+    feed = FakeFeed(
+        events=[
+            {
+                "type": "extension_ui_request",
+                "id": "uuid-2",
+                "method": "confirm",
+                "title": "Clear session?",
+                "timeout": 5000,
+            },
+            {"type": "agent_settled"},
+        ],
+        clock=clock,
+    )
     driver = PiDriver(tmp_path)
     state = driver._event_loop(
-        feed.next_line, feed.send, journal,
-        on_terminate=feed.on_terminate, clock=clock,
+        feed.next_line,
+        feed.send,
+        journal,
+        on_terminate=feed.on_terminate,
+        clock=clock,
     )
     responses = feed.commands_of("extension_ui_response")
     assert len(responses) == 1
@@ -711,15 +880,25 @@ def test_event_loop_ui_request_dialog_auto_cancelled(tmp_path, journal):
 def test_event_loop_ui_request_fire_and_forget_no_response(tmp_path, journal):
     """notify/setStatus style requests expect no response — driver must not answer them."""
     clock = FakeClock()
-    feed = FakeFeed(events=[
-        {"type": "extension_ui_request", "id": "n1", "method": "notify",
-         "message": "hello"},
-        {"type": "agent_settled"},
-    ], clock=clock)
+    feed = FakeFeed(
+        events=[
+            {
+                "type": "extension_ui_request",
+                "id": "n1",
+                "method": "notify",
+                "message": "hello",
+            },
+            {"type": "agent_settled"},
+        ],
+        clock=clock,
+    )
     driver = PiDriver(tmp_path)
     driver._event_loop(
-        feed.next_line, feed.send, journal,
-        on_terminate=feed.on_terminate, clock=clock,
+        feed.next_line,
+        feed.send,
+        journal,
+        on_terminate=feed.on_terminate,
+        clock=clock,
     )
     assert feed.commands_of("extension_ui_response") == []
 
@@ -766,22 +945,39 @@ def _ledger_root(tmp_path):
     """Fixture root with a checkpoint, two summary-ledger files and a status ledger."""
     root = tmp_path / "out"
     root.mkdir()
-    write_checkpoint(root, {
-        "topic": "AI in education",
-        "academic_level": "master",
-        "citation_style": "apa",
-        "language": "en",
-        "word_targets": {},
-    })
+    write_checkpoint(
+        root,
+        {
+            "topic": "AI in education",
+            "academic_level": "master",
+            "citation_style": "apa",
+            "language": "en",
+            "word_targets": {},
+        },
+    )
     (root / "drafts" / ".ledger").mkdir(parents=True)
     (root / "drafts" / ".ledger" / "introduction.summary.md").write_text(
-        "Intro promises a comparative study.", "utf-8")
+        "Intro promises a comparative study.", "utf-8"
+    )
     (root / "drafts" / ".ledger" / "literature_review.summary.md").write_text(
-        "Lit review covers A and B.", "utf-8")
-    update_section_status(root, "introduction", status="written", passed=True,
-                          open_issues=[], updated_at="2026-01-01T00:00:00")
-    update_section_status(root, FULL_LEDGER_KEY, last_total=62, last_passed=False,
-                          open_issues=["structure issue somewhere"], updated_at="2026-01-01T00:00:00")
+        "Lit review covers A and B.", "utf-8"
+    )
+    update_section_status(
+        root,
+        "introduction",
+        status="written",
+        passed=True,
+        open_issues=[],
+        updated_at="2026-01-01T00:00:00",
+    )
+    update_section_status(
+        root,
+        FULL_LEDGER_KEY,
+        last_total=62,
+        last_passed=False,
+        open_issues=["structure issue somewhere"],
+        updated_at="2026-01-01T00:00:00",
+    )
     return root
 
 
@@ -800,8 +996,13 @@ def test_build_review_prompt_with_ledgers(tmp_path):
     assert "introduction: written, score pass" in prompt
     assert "full draft: 62/100 (fail)" in prompt
     # the five review dimensions
-    for kw in ("Terminology", "Narrative", "redundancy", "Citation consistency",
-               "Outline conformance"):
+    for kw in (
+        "Terminology",
+        "Narrative",
+        "redundancy",
+        "Citation consistency",
+        "Outline conformance",
+    ):
         assert kw in prompt
     # strict output format contract
     assert "# Global Issues" in prompt
@@ -929,9 +1130,12 @@ def test_cli_harness_review_empty_settled_text_fails(tmp_path, monkeypatch, caps
 
         def run(self, prompt, name):
             return DriverResult(
-                ok=True, reason="settled", stats={},
+                ok=True,
+                reason="settled",
+                stats={},
                 journal_path=str(tmp_path / "run_journal.jsonl"),
-                settled_text="   ", budget_exceeded=False,
+                settled_text="   ",
+                budget_exceeded=False,
             )
 
     monkeypatch.setattr(driver_mod, "PiDriver", FakeDriver)
@@ -946,8 +1150,6 @@ def test_cli_harness_review_empty_settled_text_fails(tmp_path, monkeypatch, caps
     assert "no text" in payload["error"]
 
 
-
-
 # ------------------------------------------------------- paper orchestrator (M2)
 
 
@@ -958,7 +1160,7 @@ REVIEW_TEXT_TWO_ISSUES = (
     "Suggested fix: Add the sampling paragraph in methodology.\n\n"
     "## GI-2 [medium] scope: global\n"
     "Issue: Terminology drifts between sections.\n"
-    "Suggested fix: Unify the term \"adaptivity\" in introduction.\n"
+    'Suggested fix: Unify the term "adaptivity" in introduction.\n'
 )
 
 
@@ -971,8 +1173,13 @@ def test_parse_global_issues_contract():
     )
     issues = parse_global_issues(text)
     assert [i["id"] for i in issues] == ["GI-1", "GI-2", "GI-3"]
-    assert issues[0] == {"id": "GI-1", "severity": "high", "scope": "methodology",
-                         "issue": "lacks detail.", "fix": "add it."}
+    assert issues[0] == {
+        "id": "GI-1",
+        "severity": "high",
+        "scope": "methodology",
+        "issue": "lacks detail.",
+        "fix": "add it.",
+    }
     assert issues[1]["fix"] == ""  # missing Suggested fix tolerated
     assert issues[2]["issue"] == ""  # missing Issue line tolerated
 
@@ -1008,7 +1215,7 @@ class _FakePaperDriver:
     def run(self, prompt, name):
         self.calls.append(name)
         if name.startswith("section-"):
-            section = name[len("section-"):]
+            section = name[len("section-") :]
             rel = SECTION_FILES[section]["file"]
             f = self.root / rel
             f.parent.mkdir(parents=True, exist_ok=True)
@@ -1021,9 +1228,12 @@ class _FakePaperDriver:
         else:
             settled = ""
         return DriverResult(
-            ok=True, reason="settled", stats={"cost": self.cost, "turns": 2},
+            ok=True,
+            reason="settled",
+            stats={"cost": self.cost, "turns": 2},
             journal_path=str(self.root / f"journal_{name}.jsonl"),
-            settled_text=settled, budget_exceeded=False,
+            settled_text=settled,
+            budget_exceeded=False,
         )
 
 
@@ -1037,10 +1247,16 @@ def _paper_factory(calls, review_text, cost=0.05):
 def _paper_root(tmp_path):
     root = tmp_path / "out"
     root.mkdir()
-    write_checkpoint(root, {
-        "topic": "AI in education", "academic_level": "master",
-        "citation_style": "apa", "language": "en", "word_targets": {},
-    })
+    write_checkpoint(
+        root,
+        {
+            "topic": "AI in education",
+            "academic_level": "master",
+            "citation_style": "apa",
+            "language": "en",
+            "word_targets": {},
+        },
+    )
     return root
 
 
@@ -1051,26 +1267,41 @@ def test_run_paper_full_flow(tmp_path):
     # introduction is already written+passed -> must be skipped (resume semantics)
     (root / "drafts").mkdir(exist_ok=True)
     (root / "drafts" / "01_introduction.md").write_text("word " * 300, "utf-8")
-    update_section_status(root, "introduction", status="written", passed=True,
-                          open_issues=[], updated_at="2026-01-01T00:00:00")
+    update_section_status(
+        root,
+        "introduction",
+        status="written",
+        passed=True,
+        open_issues=[],
+        updated_at="2026-01-01T00:00:00",
+    )
 
     calls = []
     result = run_paper(
-        root, driver_factory=_paper_factory(calls, REVIEW_TEXT_TWO_ISSUES),
+        root,
+        driver_factory=_paper_factory(calls, REVIEW_TEXT_TWO_ISSUES),
         budget=PaperBudget(),
     )
 
     assert result.ok is True
     assert result.sections_skipped == ["introduction"]
     assert result.sections_completed == [
-        "literature_review", "methodology", "results", "discussion", "conclusion",
+        "literature_review",
+        "methodology",
+        "results",
+        "discussion",
+        "conclusion",
     ]
     # session names + order: sections (outline order), review, then one fix per section
     assert calls == [
-        "section-literature_review", "section-methodology", "section-results",
-        "section-discussion", "section-conclusion",
+        "section-literature_review",
+        "section-methodology",
+        "section-results",
+        "section-discussion",
+        "section-conclusion",
         "global-review",
-        "fix-methodology", "fix-introduction",
+        "fix-methodology",
+        "fix-introduction",
     ]
     # review deliverable persisted (settled text is stripped before writing)
     assert (root / "global_issues.md").read_text(encoding="utf-8") == REVIEW_TEXT_TWO_ISSUES.strip()
@@ -1091,7 +1322,8 @@ def test_run_paper_unknown_sections_dropped(tmp_path):
     root = _paper_root(tmp_path)
     calls = []
     result = run_paper(
-        root, sections=["introduction", "not_a_section"],
+        root,
+        sections=["introduction", "not_a_section"],
         driver_factory=_paper_factory(calls, ""),
         budget=PaperBudget(),
     )
@@ -1104,7 +1336,8 @@ def test_run_paper_total_budget_exhaustion(tmp_path):
     root = _paper_root(tmp_path)
     calls = []
     result = run_paper(
-        root, driver_factory=_paper_factory(calls, REVIEW_TEXT_TWO_ISSUES, cost=1.0),
+        root,
+        driver_factory=_paper_factory(calls, REVIEW_TEXT_TWO_ISSUES, cost=1.0),
         budget=PaperBudget(total_cost=0.5),
     )
     # first session consumed $1.0 > $0.5 total: everything after is skipped with warnings
@@ -1157,8 +1390,14 @@ def test_cli_harness_paper_success_envelope(tmp_path, monkeypatch, capsys):
         captured.update(kwargs)
         return PaperResult(
             ok=True,
-            sections_completed=["introduction", "literature_review", "methodology",
-                                "results", "discussion", "conclusion"],
+            sections_completed=[
+                "introduction",
+                "literature_review",
+                "methodology",
+                "results",
+                "discussion",
+                "conclusion",
+            ],
             sections_skipped=[],
             review_ok=True,
             issues_found=2,
@@ -1172,11 +1411,20 @@ def test_cli_harness_paper_success_envelope(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("harness.paper_task.run_paper", fake_run_paper)
     from opendraft.cli import run_harness_command
 
-    rc = run_harness_command([
-        "paper", "--root", str(tmp_path),
-        "--sections", "introduction,conclusion",
-        "--max-cost", "2.5", "--max-turns", "9", "--compile",
-    ])
+    rc = run_harness_command(
+        [
+            "paper",
+            "--root",
+            str(tmp_path),
+            "--sections",
+            "introduction,conclusion",
+            "--max-cost",
+            "2.5",
+            "--max-turns",
+            "9",
+            "--compile",
+        ]
+    )
     assert rc == 0
 
     captured_io = capsys.readouterr()
@@ -1231,4 +1479,5 @@ def test_default_opendraft_bin_prefers_shell_free_binary(tmp_path, monkeypatch):
         assert "opendraft.cli" in env["OPENDRAFT_BOOTSTRAP"]
     else:
         import pytest as _pt
+
         _pt.skip("repo venv not present")

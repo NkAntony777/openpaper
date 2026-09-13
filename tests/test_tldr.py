@@ -3,12 +3,13 @@
 
 import os
 import sys
-import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Add engine to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'engine'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "engine"))
 
 
 class TestDocumentReader:
@@ -96,11 +97,11 @@ class TestTLDRGeneration:
 - **[Implication]**: Chronic sleep debt has cumulative, compounding effects on brain function.
 - **[Limitation]**: Lab conditions may not accurately represent real-world sleep patterns."""
 
-        with patch('tldr.GeminiModelWrapper') as MockModel:
+        with patch("tldr.GeminiModelWrapper") as MockModel:
             mock_instance = MockModel.return_value
             mock_instance.generate_content.return_value = mock_response
 
-            with patch('google.genai'):
+            with patch("google.genai"):
                 tldr = generate_tldr(doc)
 
         assert "## TL;DR" in tldr

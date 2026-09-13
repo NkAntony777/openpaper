@@ -41,5 +41,5 @@ def resolve_under_root(root: Path, rel: str) -> Path:
     try:
         full.relative_to(root_resolved)
     except ValueError:
-        raise ToolInputError(f"path escapes output root: {rel}")
+        raise ToolInputError(f"path escapes output root: {rel}") from None
     return full

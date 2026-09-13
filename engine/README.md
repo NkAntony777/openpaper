@@ -9,7 +9,8 @@ engine/
 ├── draft_generator.py      # Main 19-stage pipeline orchestrator
 ├── config.py               # Model settings, API keys, rate limits
 ├── utils/
-│   ├── agent_runner.py     # Agent execution engine
+│   ├── llm_runtime.py     # Model setup + retrying agent LLM-call loop
+│   ├── citation_research.py  # Scout: citation research orchestration
 │   ├── api_citations/      # Citation APIs (CrossRef, Semantic Scholar)
 │   ├── citation_*.py       # Citation management & validation
 │   ├── export_professional.py  # PDF/DOCX export

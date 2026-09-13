@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict
 
 from agent_tools import registry
-from agent_tools.envelope import ok, fail, ToolInputError, resolve_under_root
+from agent_tools.envelope import ToolInputError, fail, ok, resolve_under_root
 
 DEFAULT_LIMIT = 4000
 MAX_LIMIT = 20000
@@ -26,7 +26,7 @@ INPUT_SCHEMA = {
         "path": {
             "type": "string",
             "description": "Path relative to the output root, e.g. 'research/combined_research.md', "
-                           "'drafts/00_formatted_outline.md', 'research/bibliography.json'.",
+            "'drafts/00_formatted_outline.md', 'research/bibliography.json'.",
         },
         "offset": {
             "type": "integer",
@@ -57,19 +57,23 @@ def run(args: Dict, root: Path) -> Dict:
         return fail("offset/limit must be integers")
 
     content = target.read_text(encoding="utf-8", errors="replace")
-    snippet = content[offset:offset + limit]
-    return ok({
-        "path": args.get("path"),
-        "content": snippet,
-        "size": len(content),
-        "offset": offset,
-        "truncated": offset + limit < len(content),
-    })
+    snippet = content[offset : offset + limit]
+    return ok(
+        {
+            "path": args.get("path"),
+            "content": snippet,
+            "size": len(content),
+            "offset": offset,
+            "truncated": offset + limit < len(content),
+        }
+    )
 
 
-registry.register(registry.ToolSpec(
-    name="read_artifact",
-    description=DESCRIPTION,
-    input_schema=INPUT_SCHEMA,
-    func=run,
-))
+registry.register(
+    registry.ToolSpec(
+        name="read_artifact",
+        description=DESCRIPTION,
+        input_schema=INPUT_SCHEMA,
+        func=run,
+    )
+)

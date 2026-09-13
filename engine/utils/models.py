@@ -42,6 +42,7 @@ def strip_markdown_json(text: str) -> str:
 # ResearchPlan — validates Gemini research plan output
 # ---------------------------------------------------------------------------
 
+
 class ResearchPlan(BaseModel):
     """Validates the JSON research plan returned by Gemini."""
 
@@ -124,6 +125,7 @@ class LLMCitationResponse(BaseModel):
 # CitationDatabaseSchema — validates citation database JSON from files
 # ---------------------------------------------------------------------------
 
+
 class CitationEntry(BaseModel):
     """A single citation entry in the database."""
 
@@ -154,6 +156,7 @@ class CitationDatabaseSchema(BaseModel):
 # FactCheckJudgeVerdict — validates judge LLM output in factcheck_verifier.py
 # ---------------------------------------------------------------------------
 
+
 class FactCheckJudgeVerdict(BaseModel):
     """Validates the JSON verdict returned by the fact-check judge LLM."""
 
@@ -167,6 +170,7 @@ class FactCheckJudgeVerdict(BaseModel):
 # ---------------------------------------------------------------------------
 # FactCheckClaim — validates claim extraction LLM output in draft_generator.py
 # ---------------------------------------------------------------------------
+
 
 class FactCheckClaim(BaseModel):
     """Validates a single factual claim extracted by the claim-extraction LLM."""

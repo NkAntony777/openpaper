@@ -8,15 +8,18 @@ version = "2.0.0"
 description = "Agent-native academic paper writing harness built on OpenDraft"
 readme = "README.md"
 license = {text = "MIT"}
+# OpenPaper maintains the fork; OpenDraft (Federico De Ponte) is the upstream
+# project — see README "Credits & license". The console-script name stays
+# `opendraft` for compatibility with the pi extension's OPENDRAFT_BIN contract.
 authors = [
-    {name = "Federico De Ponte"}
+    {name = "NKAntony777"}
 ]
 maintainers = [
-    {name = "Federico De Ponte"}
+    {name = "NKAntony777"}
 ]
 keywords = [
     "academic-writing",
-    "draft",
+    "agent-harness",
     "ai",
     "research",
     "citation-management",
@@ -62,10 +65,7 @@ dependencies = [
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
-    "mypy>=1.5.0",
-    "isort>=5.12.0",
+    "ruff>=0.6.0",
 ]
 docker = [
     "streamlit>=1.28.0",
@@ -77,15 +77,15 @@ audio = [
     "requests>=2.31.0",
 ]
 all = [
-    "opendraft[dev,docker,pdf,audio]",
+    "openpaper[dev,docker,pdf,audio]",
 ]
 
 [project.urls]
-Homepage = "https://opendraft.xyz"
-Documentation = "https://github.com/federicodeponte/opendraft/tree/main/docs"
-Repository = "https://github.com/federicodeponte/opendraft"
-Changelog = "https://github.com/federicodeponte/opendraft/blob/main/CHANGELOG.md"
-"Bug Tracker" = "https://github.com/federicodeponte/opendraft/issues"
+Homepage = "https://github.com/NkAntony777/openpaper"
+Documentation = "https://github.com/NkAntony777/openpaper/tree/master/docs"
+Repository = "https://github.com/NkAntony777/openpaper"
+Changelog = "https://github.com/NkAntony777/openpaper/blob/master/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/NkAntony777/openpaper/issues"
 
 [project.scripts]
 opendraft = "opendraft.cli:main"
@@ -105,45 +105,7 @@ include-package-data = true
 "opendraft" = ["prompts/*.md", "prompts/**/*.md"]
 "*" = ["*.md"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = "test_*.py"
-python_functions = "test_*"
-addopts = "-v --strict-markers --cov=. --cov-report=term-missing"
-# Exclude standalone integration test scripts (run directly, not via pytest)
-norecursedirs = ["tests/scripts", "tests/exploratory"]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests requiring API access",
-]
-
-[tool.black]
-line-length = 100
-target-version = ["py310", "py311", "py312"]
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.git
-  | \.venv
-  | build
-  | dist
-  | __pycache__
-)/
-'''
-
-[tool.isort]
-profile = "black"
-line_length = 100
-multi_line_output = 3
-
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-ignore_missing_imports = true
-
-[tool.flake8]
-max-line-length = 100
-extend-ignore = ["E203", "E266", "E501", "W503"]
-exclude = [".git", "__pycache__", "build", "dist", ".venv"]
+# NOTE: pytest config lives in the repo-root pytest.ini and ruff config in the
+# repo-root ruff.toml (single sources of truth for CI and local runs). No
+# [tool.pytest.ini_options] or [tool.ruff] here on purpose — second copies
+# would silently change behavior depending on the cwd a tool is invoked from.

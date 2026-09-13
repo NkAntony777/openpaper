@@ -13,15 +13,13 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from agent_tools import registry
-from agent_tools.common import SECTION_FILES
-from agent_tools.envelope import ok, fail
 from agent_tools.claims import _quiet_stdout, verdicts_to_find_replace
+from agent_tools.common import SECTION_FILES
+from agent_tools.envelope import fail, ok
 
 LEDGER_DIR_REL = "drafts/.ledger"
 ID_PREFIX = "CL"
-NO_KEY_MESSAGE = (
-    "verification needs GOOGLE_API_KEY; recording and listing work offline"
-)
+NO_KEY_MESSAGE = "verification needs GOOGLE_API_KEY; recording and listing work offline"
 
 RESOLVE_STATUSES = ("revised", "deleted")
 
@@ -48,9 +46,9 @@ INPUT_SCHEMA = {
             "type": "string",
             "enum": ["record", "list", "verify", "resolve"],
             "description": "record: append claims to the section's ledger. list: read the "
-                           "ledger back (offline). verify: fact-check recorded claims and "
-                           "persist verdicts (needs GOOGLE_API_KEY). resolve: mark a "
-                           "CONTRADICTED claim revised|deleted after the draft change is on disk.",
+            "ledger back (offline). verify: fact-check recorded claims and "
+            "persist verdicts (needs GOOGLE_API_KEY). resolve: mark a "
+            "CONTRADICTED claim revised|deleted after the draft change is on disk.",
         },
         "section": {
             "type": "string",
@@ -70,9 +68,9 @@ INPUT_SCHEMA = {
                 },
             },
             "description": "For action='record': claims to append ({claim, line?}). "
-                           "For action='verify': optional subset to verify (default: all "
-                           "recorded claims without a verdict yet). "
-                           "For action='resolve': [{id|claim, status=revised|deleted, note?}].",
+            "For action='verify': optional subset to verify (default: all "
+            "recorded claims without a verdict yet). "
+            "For action='resolve': [{id|claim, status=revised|deleted, note?}].",
         },
         "max_workers": {
             "type": "integer",
@@ -156,7 +154,8 @@ def iter_ledger_entries(root) -> List[Dict]:
 def unresolved_contradictions(root) -> List[Dict]:
     """CONTRADICTED ledger entries that have not been revised or deleted."""
     return [
-        e for e in iter_ledger_entries(root)
+        e
+        for e in iter_ledger_entries(root)
         if _entry_verdict(e) == "CONTRADICTED" and not _is_resolved(e)
     ]
 
@@ -182,31 +181,37 @@ def _record(args: Dict, root: Path, section: str) -> Dict:
     now = datetime.now().isoformat(timespec="seconds")
     for offset, item in enumerate(normalized):
         eid = f"{ID_PREFIX}-{section.upper()}-{n + offset}"
-        entries.append({
-            "id": eid,
-            "claim": item["claim"],
-            "line": item.get("line", ""),
-            "recorded_at": now,
-        })
+        entries.append(
+            {
+                "id": eid,
+                "claim": item["claim"],
+                "line": item.get("line", ""),
+                "recorded_at": now,
+            }
+        )
         recorded_ids.append(eid)
     _write_entries(path, entries)
 
-    return ok({
-        "recorded": len(normalized),
-        "path": f"{LEDGER_DIR_REL}/{section}.claims.jsonl",
-        "ids": recorded_ids,
-    })
+    return ok(
+        {
+            "recorded": len(normalized),
+            "path": f"{LEDGER_DIR_REL}/{section}.claims.jsonl",
+            "ids": recorded_ids,
+        }
+    )
 
 
 def _list(args: Dict, root: Path, section: str) -> Dict:
     path = _ledger_path(root, section)
     entries = _read_entries(path)
-    return ok({
-        "section": section,
-        "path": f"{LEDGER_DIR_REL}/{section}.claims.jsonl",
-        "count": len(entries),
-        "claims": entries,
-    })
+    return ok(
+        {
+            "section": section,
+            "path": f"{LEDGER_DIR_REL}/{section}.claims.jsonl",
+            "count": len(entries),
+            "claims": entries,
+        }
+    )
 
 
 def _verify(args: Dict, root: Path, section: str) -> Dict:
@@ -237,14 +242,16 @@ def _verify(args: Dict, root: Path, section: str) -> Dict:
                 item = dict(v)
                 item.setdefault("claim", e.get("claim"))
                 stored.append(item)
-        return ok({
-            "section": section,
-            "verdicts": stored,
-            "count": 0,
-            "message": "all recorded claims already carry a verdict",
-            "find_replace": verdicts_to_find_replace(stored),
-            "unresolved_contradicted": len(unresolved_contradictions(root)),
-        })
+        return ok(
+            {
+                "section": section,
+                "verdicts": stored,
+                "count": 0,
+                "message": "all recorded claims already carry a verdict",
+                "find_replace": verdicts_to_find_replace(stored),
+                "unresolved_contradicted": len(unresolved_contradictions(root)),
+            }
+        )
 
     try:
         max_workers = int(args.get("max_workers") or 10)
@@ -253,21 +260,25 @@ def _verify(args: Dict, root: Path, section: str) -> Dict:
     max_workers = max(1, min(max_workers, 20))
 
     from config import get_config
+
     config = get_config()
     api_key = config.google_api_key
     if not api_key:
         return fail(NO_KEY_MESSAGE, is_retryable=False, missing_env="GOOGLE_API_KEY")
 
     try:
-        from utils.agent_runner import setup_model
+        from utils.llm_runtime import setup_model
+
         model = setup_model()
     except Exception as e:
         return fail(f"could not set up judge model: {type(e).__name__}: {e}", is_retryable=False)
 
-    claims_in = [{"claim": e["claim"], "section": section, "line": str(e.get("line") or "")}
-                 for e in pending]
+    claims_in = [
+        {"claim": e["claim"], "section": section, "line": str(e.get("line") or "")} for e in pending
+    ]
     try:
         from utils.factcheck_verifier import FactCheckVerifier
+
         with _quiet_stdout():
             verifier = FactCheckVerifier(api_key=api_key, model=model)
             verdicts = verifier.verify_claims(claims_in, max_workers=max_workers)
@@ -289,15 +300,17 @@ def _verify(args: Dict, root: Path, section: str) -> Dict:
             }
     _write_entries(path, entries)
 
-    return ok({
-        "section": section,
-        "verdicts": verdicts,
-        "count": len(verdicts),
-        "contradicted": sum(1 for v in verdicts if v.get("verdict") == "CONTRADICTED"),
-        "find_replace": verdicts_to_find_replace(verdicts),
-        "path": f"{LEDGER_DIR_REL}/{section}.claims.jsonl",
-        "unresolved_contradicted": len(unresolved_contradictions(root)),
-    })
+    return ok(
+        {
+            "section": section,
+            "verdicts": verdicts,
+            "count": len(verdicts),
+            "contradicted": sum(1 for v in verdicts if v.get("verdict") == "CONTRADICTED"),
+            "find_replace": verdicts_to_find_replace(verdicts),
+            "path": f"{LEDGER_DIR_REL}/{section}.claims.jsonl",
+            "unresolved_contradicted": len(unresolved_contradictions(root)),
+        }
+    )
 
 
 def _find_entry(entries: List[Dict], item: Dict) -> Optional[Dict]:
@@ -384,13 +397,15 @@ def _resolve(args: Dict, root: Path, section: str) -> Dict:
         resolved_ids.append(entry.get("id") or "")
 
     _write_entries(path, entries)
-    return ok({
-        "section": section,
-        "resolved": len(resolved_ids),
-        "ids": resolved_ids,
-        "path": f"{LEDGER_DIR_REL}/{section}.claims.jsonl",
-        "unresolved_contradicted": len(unresolved_contradictions(root)),
-    })
+    return ok(
+        {
+            "section": section,
+            "resolved": len(resolved_ids),
+            "ids": resolved_ids,
+            "path": f"{LEDGER_DIR_REL}/{section}.claims.jsonl",
+            "unresolved_contradicted": len(unresolved_contradictions(root)),
+        }
+    )
 
 
 def run(args: Dict, root: Path) -> Dict:
@@ -410,9 +425,11 @@ def run(args: Dict, root: Path) -> Dict:
     return _resolve(args, root, section)
 
 
-registry.register(registry.ToolSpec(
-    name="manage_claims",
-    description=DESCRIPTION,
-    input_schema=INPUT_SCHEMA,
-    func=run,
-))
+registry.register(
+    registry.ToolSpec(
+        name="manage_claims",
+        description=DESCRIPTION,
+        input_schema=INPUT_SCHEMA,
+        func=run,
+    )
+)

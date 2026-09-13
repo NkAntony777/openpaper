@@ -16,29 +16,29 @@ Design Principles:
 - Production-grade: Handles transient failures gracefully
 """
 
-import random
 import functools
-from typing import TypeVar, Callable, Optional, Type, Tuple, Any
-from utils.logging_config import get_logger
+import random
+from typing import Any, Callable, Optional, Tuple, Type, TypeVar
+
 from tenacity import (
-    retry as tenacity_retry,
+    RetryCallState,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
-    retry_if_exception_type,
-    RetryCallState,
 )
+from tenacity import (
+    retry as tenacity_retry,
+)
+from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 # Type variable for preserving function signature
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def exponential_backoff_with_jitter(
-    attempt: int,
-    base_delay: float = 1.0,
-    max_delay: float = 60.0,
-    jitter: bool = True
+    attempt: int, base_delay: float = 1.0, max_delay: float = 60.0, jitter: bool = True
 ) -> float:
     """
     Calculate delay with exponential backoff and optional jitter.
@@ -59,7 +59,7 @@ def exponential_backoff_with_jitter(
         >>> exponential_backoff_with_jitter(3)  # ~8s
     """
     # Calculate exponential delay: base_delay * 2^attempt
-    delay = min(base_delay * (2 ** attempt), max_delay)
+    delay = min(base_delay * (2**attempt), max_delay)
 
     # Add jitter (randomize ±25% to prevent thundering herd)
     if jitter:
@@ -75,7 +75,7 @@ def retry(
     base_delay: float = 1.0,
     max_delay: float = 60.0,
     exceptions: Tuple[Type[Exception], ...] = (Exception,),
-    on_retry: Optional[Callable[[Exception, int], None]] = None
+    on_retry: Optional[Callable[[Exception, int], None]] = None,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
     Decorator to retry a function with exponential backoff.
@@ -99,6 +99,7 @@ def retry(
     Raises:
         The last exception if all retries are exhausted
     """
+
     def _before_sleep(retry_state: RetryCallState) -> None:
         """Log warning and call on_retry callback before each retry sleep."""
         exc = retry_state.outcome.exception() if retry_state.outcome else None
@@ -106,8 +107,7 @@ def retry(
         func_name = retry_state.fn.__name__ if retry_state.fn else "unknown"
 
         logger.warning(
-            f"{func_name} failed (attempt {attempt_number}/{max_attempts}): {exc}"
-            f" - Retrying..."
+            f"{func_name} failed (attempt {attempt_number}/{max_attempts}): {exc} - Retrying..."
         )
 
         if on_retry and exc:
@@ -127,7 +127,9 @@ def retry(
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @tenacity_retry(
             stop=stop_after_attempt(max_attempts),
-            wait=wait_exponential_jitter(initial=base_delay, max=max_delay, jitter=base_delay * 0.25),
+            wait=wait_exponential_jitter(
+                initial=base_delay, max=max_delay, jitter=base_delay * 0.25
+            ),
             retry=retry_if_exception_type(exceptions),
             reraise=True,
             before_sleep=_before_sleep,
@@ -138,13 +140,12 @@ def retry(
             return func(*args, **kwargs)
 
         return wrapper
+
     return decorator
 
 
 def retry_on_network_error(
-    max_attempts: int = 3,
-    base_delay: float = 2.0,
-    max_delay: float = 30.0
+    max_attempts: int = 3, base_delay: float = 2.0, max_delay: float = 30.0
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
     Specialized retry decorator for network operations.
@@ -190,7 +191,6 @@ def retry_on_network_error(
         """Log warning before each retry sleep."""
         exc = retry_state.outcome.exception() if retry_state.outcome else None
         attempt_number = retry_state.attempt_number
-        func_name = retry_state.fn.__name__ if retry_state.fn else "unknown"
 
         if isinstance(exc, requests.HTTPError) and exc.response is not None:
             logger.warning(
@@ -199,8 +199,7 @@ def retry_on_network_error(
             )
         else:
             logger.warning(
-                f"Network error (attempt {attempt_number}/{max_attempts}): {exc} "
-                f"- Retrying..."
+                f"Network error (attempt {attempt_number}/{max_attempts}): {exc} - Retrying..."
             )
 
     def _after_final_failure(retry_state: RetryCallState) -> None:
@@ -213,7 +212,9 @@ def retry_on_network_error(
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @tenacity_retry(
             stop=stop_after_attempt(max_attempts),
-            wait=wait_exponential_jitter(initial=base_delay, max=max_delay, jitter=base_delay * 0.25),
+            wait=wait_exponential_jitter(
+                initial=base_delay, max=max_delay, jitter=base_delay * 0.25
+            ),
             retry=_should_retry,
             reraise=True,
             before_sleep=_before_sleep,
@@ -224,6 +225,7 @@ def retry_on_network_error(
             return func(*args, **kwargs)
 
         return wrapper
+
     return decorator
 
 
@@ -232,23 +234,25 @@ def retry_on_network_error(
 
 import threading
 import time as time_module
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
 
 
 class CircuitState(Enum):
     """Circuit breaker states."""
-    CLOSED = "closed"      # Normal operation, calls allowed
-    OPEN = "open"          # Failures exceeded threshold, calls blocked
+
+    CLOSED = "closed"  # Normal operation, calls allowed
+    OPEN = "open"  # Failures exceeded threshold, calls blocked
     HALF_OPEN = "half_open"  # Testing if service recovered
 
 
 @dataclass
 class CircuitBreakerConfig:
     """Configuration for circuit breaker."""
-    failure_threshold: int = 5      # Open circuit after N failures
-    reset_timeout: float = 60.0     # Seconds before trying half-open
-    success_threshold: int = 2      # Successes needed to close from half-open
+
+    failure_threshold: int = 5  # Open circuit after N failures
+    reset_timeout: float = 60.0  # Seconds before trying half-open
+    success_threshold: int = 2  # Successes needed to close from half-open
 
 
 class CircuitBreaker:
@@ -291,7 +295,7 @@ class CircuitBreaker:
 
     def __init__(self, name: str, config: Optional[CircuitBreakerConfig] = None):
         """Initialize circuit breaker for a named service."""
-        if getattr(self, '_initialized', False):
+        if getattr(self, "_initialized", False):
             return  # Already initialized
 
         self.name = name
@@ -339,7 +343,9 @@ class CircuitBreaker:
                     self.state = CircuitState.CLOSED
                     self.failure_count = 0
                     self.success_count = 0
-                    logger.info(f"CircuitBreaker '{self.name}': HALF_OPEN -> CLOSED (service recovered)")
+                    logger.info(
+                        f"CircuitBreaker '{self.name}': HALF_OPEN -> CLOSED (service recovered)"
+                    )
             elif self.state == CircuitState.CLOSED:
                 # Reset failure count on success
                 self.failure_count = 0
@@ -353,7 +359,9 @@ class CircuitBreaker:
             if self.state == CircuitState.HALF_OPEN:
                 # Probe failed, back to open
                 self.state = CircuitState.OPEN
-                logger.warning(f"CircuitBreaker '{self.name}': HALF_OPEN -> OPEN (probe failed: {error})")
+                logger.warning(
+                    f"CircuitBreaker '{self.name}': HALF_OPEN -> OPEN (probe failed: {error})"
+                )
             elif self.state == CircuitState.CLOSED:
                 if self.failure_count >= self.config.failure_threshold:
                     self.state = CircuitState.OPEN
@@ -364,6 +372,7 @@ class CircuitBreaker:
 
     def protect(self, func: Callable[..., T]) -> Callable[..., T]:
         """Decorator to protect a function with the circuit breaker."""
+
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T:
             if not self.allow_request():
@@ -377,6 +386,7 @@ class CircuitBreaker:
             except Exception as e:
                 self.record_failure(e)
                 raise
+
         return wrapper
 
     def reset(self) -> None:
@@ -391,6 +401,7 @@ class CircuitBreaker:
 
 class CircuitOpenError(Exception):
     """Raised when circuit breaker is open and request is rejected."""
+
     pass
 
 
@@ -399,7 +410,7 @@ def get_gemini_circuit_breaker() -> CircuitBreaker:
     """Get or create circuit breaker for Gemini API."""
     return CircuitBreaker(
         "gemini_api",
-        CircuitBreakerConfig(failure_threshold=5, reset_timeout=60.0, success_threshold=2)
+        CircuitBreakerConfig(failure_threshold=5, reset_timeout=60.0, success_threshold=2),
     )
 
 
@@ -407,19 +418,19 @@ def get_citation_circuit_breaker() -> CircuitBreaker:
     """Get or create circuit breaker for citation APIs."""
     return CircuitBreaker(
         "citation_apis",
-        CircuitBreakerConfig(failure_threshold=10, reset_timeout=30.0, success_threshold=3)
+        CircuitBreakerConfig(failure_threshold=10, reset_timeout=30.0, success_threshold=3),
     )
 
 
 # Example usage and testing
-if __name__ == '__main__':
+if __name__ == "__main__":
     import requests
 
     # Test basic retry
     @retry(max_attempts=3, base_delay=0.1)
     def unreliable_function(fail_count: int) -> str:
         """Simulates a function that fails N times before succeeding."""
-        if not hasattr(unreliable_function, 'attempts'):
+        if not hasattr(unreliable_function, "attempts"):
             unreliable_function.attempts = 0
 
         unreliable_function.attempts += 1

@@ -13,7 +13,7 @@ consume the structured fields instead of guessing.
 """
 
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -24,52 +24,59 @@ logger = logging.getLogger(__name__)
 # Sub-structures
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Hypothesis:
     """A single research hypothesis (H1, H2, ...)."""
+
     statement: str
-    id: Optional[str] = None          # "H1", "H2", ...; auto-assigned if None
-    rationale: Optional[str] = None   # why this hypothesis is expected
+    id: Optional[str] = None  # "H1", "H2", ...; auto-assigned if None
+    rationale: Optional[str] = None  # why this hypothesis is expected
 
 
 @dataclass
 class ResearchTask:
     """A concrete task the research addresses (Task 1, 2, ...)."""
+
     name: str
     description: Optional[str] = None
-    id: Optional[str] = None          # "T1", "T2", ...; auto-assigned if None
+    id: Optional[str] = None  # "T1", "T2", ...; auto-assigned if None
 
 
 @dataclass
 class MetricSpec:
     """An evaluation metric with optional parameters and priority."""
-    name: str                          # "Hits@K", "MRR", "F1", ...
+
+    name: str  # "Hits@K", "MRR", "F1", ...
     description: Optional[str] = None
-    k_value: Optional[int] = None      # K for Hits@K / Recall@K
-    priority: Optional[str] = None     # "primary" / "secondary"
+    k_value: Optional[int] = None  # K for Hits@K / Recall@K
+    priority: Optional[str] = None  # "primary" / "secondary"
 
 
 @dataclass
 class BaselineSpec:
     """A baseline method the paper must compare against."""
-    name: str                          # "TGN (Rossi et al., 2020)"
-    category: Optional[str] = None     # "rule" / "ml" / "sequence" / "temporal-gnn" / ...
+
+    name: str  # "TGN (Rossi et al., 2020)"
+    category: Optional[str] = None  # "rule" / "ml" / "sequence" / "temporal-gnn" / ...
     description: Optional[str] = None
 
 
 @dataclass
 class AblationSpec:
     """One ablation dimension (e.g. "w/o Global Context")."""
-    name: str                          # "w/o Duration"
-    dimension: Optional[str] = None    # which component is removed
-    purpose: Optional[str] = None      # what removing it is meant to show
+
+    name: str  # "w/o Duration"
+    dimension: Optional[str] = None  # which component is removed
+    purpose: Optional[str] = None  # what removing it is meant to show
 
 
 @dataclass
 class SectionSpec:
     """A user-specified outline section (custom_outline support)."""
+
     title: str
-    role: Optional[str] = None         # maps to a standard slot, see STANDARD_ROLES
+    role: Optional[str] = None  # maps to a standard slot, see STANDARD_ROLES
     target_words: Optional[int] = None
     required_subsections: List[str] = field(default_factory=list)
     specific_citations: List[str] = field(default_factory=list)
@@ -135,6 +142,7 @@ def _as_spec_list(raw: Optional[List[Any]], spec_cls, name_field: str) -> List[A
 # ResearchBrief
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ResearchBrief:
     """
@@ -145,22 +153,22 @@ class ResearchBrief:
     compose phase (prompts), validate phase (GT protocol + forbidden claims).
     """
 
-    title: Optional[str] = None                        # paper title; overrides topic
-    core_question: Optional[str] = None                # one-sentence research question
-    research_questions: List[str] = field(default_factory=list)     # RQ1, RQ2, ...
-    hypotheses: List[Hypothesis] = field(default_factory=list)      # H1, H2, ...
-    tasks: List[ResearchTask] = field(default_factory=list)         # Task 1, 2, ...
-    innovations: List[str] = field(default_factory=list)            # contribution 1, 2, 3
+    title: Optional[str] = None  # paper title; overrides topic
+    core_question: Optional[str] = None  # one-sentence research question
+    research_questions: List[str] = field(default_factory=list)  # RQ1, RQ2, ...
+    hypotheses: List[Hypothesis] = field(default_factory=list)  # H1, H2, ...
+    tasks: List[ResearchTask] = field(default_factory=list)  # Task 1, 2, ...
+    innovations: List[str] = field(default_factory=list)  # contribution 1, 2, 3
     baselines: List[BaselineSpec] = field(default_factory=list)
     ablation_dims: List[AblationSpec] = field(default_factory=list)
     metrics: List[MetricSpec] = field(default_factory=list)
-    split_strategy: Optional[str] = None               # "temporal" / "user" / "scene" / free text
-    ground_truth_protocol: Optional[str] = None        # where ground truth comes from
-    forbidden_claims: List[str] = field(default_factory=list)       # must NOT appear in the paper
-    venue_target: Optional[str] = None                 # "ICWSM" / "WWW" / "KDD" / ...
+    split_strategy: Optional[str] = None  # "temporal" / "user" / "scene" / free text
+    ground_truth_protocol: Optional[str] = None  # where ground truth comes from
+    forbidden_claims: List[str] = field(default_factory=list)  # must NOT appear in the paper
+    venue_target: Optional[str] = None  # "ICWSM" / "WWW" / "KDD" / ...
     literature_search_questions: List[str] = field(default_factory=list)
     output_sections: List[SectionSpec] = field(default_factory=list)  # custom outline
-    additional_context: Optional[str] = None           # free-form extra context
+    additional_context: Optional[str] = None  # free-form extra context
 
     # ------------------------------------------------------------------
     # Normalization
@@ -192,11 +200,21 @@ class ResearchBrief:
     def is_empty(self) -> bool:
         """True if the brief carries no meaningful research intent."""
         meaningful = (
-            self.title, self.core_question, self.research_questions, self.hypotheses,
-            self.tasks, self.innovations, self.baselines, self.ablation_dims,
-            self.metrics, self.split_strategy, self.ground_truth_protocol,
-            self.forbidden_claims, self.venue_target,
-            self.literature_search_questions, self.output_sections,
+            self.title,
+            self.core_question,
+            self.research_questions,
+            self.hypotheses,
+            self.tasks,
+            self.innovations,
+            self.baselines,
+            self.ablation_dims,
+            self.metrics,
+            self.split_strategy,
+            self.ground_truth_protocol,
+            self.forbidden_claims,
+            self.venue_target,
+            self.literature_search_questions,
+            self.output_sections,
             self.additional_context,
         )
         return not any(meaningful)
@@ -234,12 +252,14 @@ class ResearchBrief:
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "ResearchBrief":
         import yaml  # optional dependency; project requirements include PyYAML
+
         raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
         return cls.from_dict(raw)
 
     @classmethod
     def from_json(cls, path: Union[str, Path]) -> "ResearchBrief":
         import json
+
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
         return cls.from_dict(raw)
 
@@ -282,7 +302,7 @@ class ResearchBrief:
                 if h.rationale:
                     line += f" (rationale: {h.rationale})"
                 lines.append(line)
-            blocks.append(f"**Hypotheses (must be explicitly addressed):**\n" + "\n".join(lines))
+            blocks.append("**Hypotheses (must be explicitly addressed):**\n" + "\n".join(lines))
 
         if self.tasks:
             lines = []
@@ -291,7 +311,9 @@ class ResearchBrief:
                 if t.description:
                     line += f" — {t.description}"
                 lines.append(line)
-            blocks.append(f"**Research tasks (structure the work around these):**\n" + "\n".join(lines))
+            blocks.append(
+                "**Research tasks (structure the work around these):**\n" + "\n".join(lines)
+            )
 
         if self.innovations:
             lines = "\n".join(f"- {inn}" for inn in self.innovations)
@@ -310,7 +332,8 @@ class ResearchBrief:
                     line += f": {b.description}"
                 lines.append(line)
             blocks.append(
-                f"**Required baselines (Methods/Results must cover exactly these):**\n" + "\n".join(lines)
+                "**Required baselines (Methods/Results must cover exactly these):**\n"
+                + "\n".join(lines)
             )
 
         if self.ablation_dims:
@@ -323,7 +346,8 @@ class ResearchBrief:
                     line += f" — {a.purpose}"
                 lines.append(line)
             blocks.append(
-                f"**Required ablation studies (cover exactly these dimensions):**\n" + "\n".join(lines)
+                "**Required ablation studies (cover exactly these dimensions):**\n"
+                + "\n".join(lines)
             )
 
         if self.metrics:
@@ -338,8 +362,8 @@ class ResearchBrief:
                     line += f": {m.description}"
                 lines.append(line)
             blocks.append(
-                f"**Evaluation metrics (use these, in this priority order; "
-                f"do not silently substitute others):**\n" + "\n".join(lines)
+                "**Evaluation metrics (use these, in this priority order; "
+                "do not silently substitute others):**\n" + "\n".join(lines)
             )
 
         if self.split_strategy:
@@ -356,9 +380,7 @@ class ResearchBrief:
 
         if self.forbidden_claims:
             lines = "\n".join(f"- {c}" for c in self.forbidden_claims)
-            blocks.append(
-                f"**FORBIDDEN claims (must NOT appear anywhere in the paper):**\n{lines}"
-            )
+            blocks.append(f"**FORBIDDEN claims (must NOT appear anywhere in the paper):**\n{lines}")
 
         if self.venue_target:
             blocks.append(f"**Target venue:** {self.venue_target}")
@@ -377,7 +399,7 @@ class ResearchBrief:
                     line += f" | notes: {s.content_notes}"
                 lines.append(line)
             blocks.append(
-                f"**Required outline sections (in this exact order):**\n" + "\n".join(lines)
+                "**Required outline sections (in this exact order):**\n" + "\n".join(lines)
             )
 
         if self.additional_context:

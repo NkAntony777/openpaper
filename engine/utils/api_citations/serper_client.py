@@ -4,11 +4,10 @@ ABOUTME: Serper.dev API client for web search with citation extraction
 ABOUTME: Drop-in replacement for GeminiGroundedClient using Serper's Google Search API
 """
 
+import logging
 import os
 import re
-import logging
-from typing import Optional, Dict, Any, List
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional
 
 try:
     import requests
@@ -20,7 +19,7 @@ try:
 except ImportError:
     load_dotenv = None
 
-from .base import BaseAPIClient, validate_author_name, validate_publication_year
+from .base import BaseAPIClient
 
 logger = logging.getLogger(__name__)
 
@@ -28,35 +27,86 @@ logger = logging.getLogger(__name__)
 # Domain filtering (shared with gemini_grounded.py)
 TRUSTED_INDUSTRY_DOMAINS = [
     # Consulting firms
-    'mckinsey.com', 'bcg.com', 'bain.com', 'deloitte.com', 'pwc.com', 'kpmg.com', 'ey.com', 'accenture.com',
+    "mckinsey.com",
+    "bcg.com",
+    "bain.com",
+    "deloitte.com",
+    "pwc.com",
+    "kpmg.com",
+    "ey.com",
+    "accenture.com",
     # International organizations
-    'who.int', 'oecd.org', 'worldbank.org', 'un.org', 'imf.org', 'wto.org', 'unesco.org',
+    "who.int",
+    "oecd.org",
+    "worldbank.org",
+    "un.org",
+    "imf.org",
+    "wto.org",
+    "unesco.org",
     # Industry analysts
-    'gartner.com', 'forrester.com', 'idc.com', 'statista.com',
+    "gartner.com",
+    "forrester.com",
+    "idc.com",
+    "statista.com",
     # Government/academic TLDs
-    '.gov', '.edu', '.ac.uk', '.gov.uk', '.edu.au', '.ac.jp', '.edu.cn',
+    ".gov",
+    ".edu",
+    ".ac.uk",
+    ".gov.uk",
+    ".edu.au",
+    ".ac.jp",
+    ".edu.cn",
     # News/quality journalism
-    'reuters.com', 'bbc.com', 'nytimes.com', 'ft.com', 'economist.com', 'wsj.com',
+    "reuters.com",
+    "bbc.com",
+    "nytimes.com",
+    "ft.com",
+    "economist.com",
+    "wsj.com",
     # Tech giants (official docs/research)
-    'research.google', 'ai.google', 'research.microsoft.com', 'research.ibm.com',
-    'openai.com', 'deepmind.com', 'anthropic.com',
+    "research.google",
+    "ai.google",
+    "research.microsoft.com",
+    "research.ibm.com",
+    "openai.com",
+    "deepmind.com",
+    "anthropic.com",
 ]
 
 BLOCKED_DOMAINS = [
     # Blog indicators
-    '/blog/', '/blogs/', 'blog.', 'medium.com', 'substack.com', 'dev.to', 'hashnode.dev',
+    "/blog/",
+    "/blogs/",
+    "blog.",
+    "medium.com",
+    "substack.com",
+    "dev.to",
+    "hashnode.dev",
     # Social media
-    'linkedin.com', 'twitter.com', 'facebook.com', 'instagram.com', 'tiktok.com',
+    "linkedin.com",
+    "twitter.com",
+    "facebook.com",
+    "instagram.com",
+    "tiktok.com",
     # Video platforms
-    'youtube.com', 'vimeo.com',
+    "youtube.com",
+    "vimeo.com",
     # Q&A sites (not primary sources)
-    'quora.com', 'reddit.com', 'stackoverflow.com',
+    "quora.com",
+    "reddit.com",
+    "stackoverflow.com",
     # Wikipedia (not primary source)
-    'wikipedia.org',
+    "wikipedia.org",
     # User-generated hosting platforms
-    'github.io', 'gitlab.io', 'netlify.app', 'vercel.app', 'herokuapp.com',
+    "github.io",
+    "gitlab.io",
+    "netlify.app",
+    "vercel.app",
+    "herokuapp.com",
     # Academic aggregators (need DOI enrichment)
-    'semanticscholar.org', 'researchgate.net', 'academia.edu',
+    "semanticscholar.org",
+    "researchgate.net",
+    "academia.edu",
 ]
 
 
@@ -76,7 +126,7 @@ def extract_year_from_url(url: str) -> Optional[int]:
     """Extract publication year from URL path patterns."""
     if not url:
         return None
-    match = re.search(r'/20(1[0-9]|2[0-6])/', url)
+    match = re.search(r"/20(1[0-9]|2[0-6])/", url)
     if match:
         return int(f"20{match.group(1)}")
     return None
@@ -124,7 +174,7 @@ class SerperClient(BaseAPIClient):
         if load_dotenv is not None:
             load_dotenv()
 
-        self.serper_api_key = api_key or os.getenv('SERPER_API_KEY')
+        self.serper_api_key = api_key or os.getenv("SERPER_API_KEY")
 
         if not self.serper_api_key:
             raise ValueError(
@@ -136,7 +186,7 @@ class SerperClient(BaseAPIClient):
             api_key=self.serper_api_key,
             timeout=timeout,
             max_retries=max_retries,
-            api_type='serper',
+            api_type="serper",
         )
 
         self.num_results = num_results
@@ -144,10 +194,12 @@ class SerperClient(BaseAPIClient):
 
         # Session for URL validation
         self.validation_session = requests.Session()
-        self.validation_session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                          'AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-        })
+        self.validation_session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+            }
+        )
 
     def search_paper(self, query: str) -> Optional[Dict[str, Any]]:
         """
@@ -197,13 +249,13 @@ class SerperClient(BaseAPIClient):
             List of raw search result dicts
         """
         headers = {
-            'X-API-KEY': self.serper_api_key,
-            'Content-Type': 'application/json',
+            "X-API-KEY": self.serper_api_key,
+            "Content-Type": "application/json",
         }
 
         payload = {
-            'q': query,
-            'num': self.num_results,
+            "q": query,
+            "num": self.num_results,
         }
 
         try:
@@ -221,16 +273,18 @@ class SerperClient(BaseAPIClient):
             data = response.json()
 
             # Extract organic results
-            organic = data.get('organic', [])
+            organic = data.get("organic", [])
 
             results = []
             for item in organic:
-                results.append({
-                    'title': item.get('title', ''),
-                    'url': item.get('link', ''),
-                    'snippet': item.get('snippet', ''),
-                    'position': item.get('position', 0),
-                })
+                results.append(
+                    {
+                        "title": item.get("title", ""),
+                        "url": item.get("link", ""),
+                        "snippet": item.get("snippet", ""),
+                        "position": item.get("position", 0),
+                    }
+                )
 
             logger.info(f"Serper: Found {len(results)} results for: {query[:50]}...")
             return results
@@ -252,8 +306,8 @@ class SerperClient(BaseAPIClient):
         Returns:
             Enriched source dict or None if invalid
         """
-        url = result.get('url', '')
-        title = result.get('title', '')
+        url = result.get("url", "")
+        title = result.get("title", "")
 
         if not url:
             return None
@@ -282,53 +336,55 @@ class SerperClient(BaseAPIClient):
 
         # Build base result
         validated = {
-            'title': title,
-            'url': url,
-            'snippet': result.get('snippet'),
-            'authors': None,
-            'year': None,
-            'doi': doi,
-            'source_type': 'report' if is_trusted_domain(url) else 'website',
+            "title": title,
+            "url": url,
+            "snippet": result.get("snippet"),
+            "authors": None,
+            "year": None,
+            "doi": doi,
+            "source_type": "report" if is_trusted_domain(url) else "website",
         }
 
         # Try to extract year from URL
         url_year = extract_year_from_url(url)
         if url_year:
-            validated['year'] = str(url_year)
+            validated["year"] = str(url_year)
 
         # Enrich academic URLs with metadata
         if self._is_academic_url(url):
             enriched = self._enrich_academic_metadata(url)
             if enriched:
                 # Merge enriched data, keeping original URL
-                enriched['url'] = url
-                if not enriched.get('snippet'):
-                    enriched['snippet'] = result.get('snippet')
+                enriched["url"] = url
+                if not enriched.get("snippet"):
+                    enriched["snippet"] = result.get("snippet")
                 return enriched
 
         # Enrich via DOI if available
-        if doi and not validated.get('authors'):
+        if doi and not validated.get("authors"):
             crossref_data = self._fetch_crossref_metadata(doi)
             if crossref_data:
-                validated.update({
-                    'title': crossref_data.get('title') or title,
-                    'authors': crossref_data.get('authors'),
-                    'year': crossref_data.get('year') or validated.get('year'),
-                    'journal': crossref_data.get('journal'),
-                    'source_type': 'journal',
-                })
+                validated.update(
+                    {
+                        "title": crossref_data.get("title") or title,
+                        "authors": crossref_data.get("authors"),
+                        "year": crossref_data.get("year") or validated.get("year"),
+                        "journal": crossref_data.get("journal"),
+                        "source_type": "journal",
+                    }
+                )
 
         return validated
 
     def _extract_doi_from_url(self, url: str) -> Optional[str]:
         """Extract DOI from URL if present."""
         # doi.org URLs
-        match = re.search(r'doi\.org/(10\.[^\s&?#]+)', url)
+        match = re.search(r"doi\.org/(10\.[^\s&?#]+)", url)
         if match:
             return match.group(1)
 
         # DOI embedded in URL path
-        match = re.search(r'(10\.\d{4,}/[^\s&?#]+)', url)
+        match = re.search(r"(10\.\d{4,}/[^\s&?#]+)", url)
         if match:
             return match.group(1)
 
@@ -337,12 +393,30 @@ class SerperClient(BaseAPIClient):
     def _is_academic_url(self, url: str) -> bool:
         """Check if URL is from an academic domain."""
         academic_domains = [
-            'pubmed.ncbi.nlm.nih.gov', 'pmc.ncbi.nlm.nih.gov', 'doi.org',
-            'mdpi.com', 'springer.com', 'nature.com', 'sciencedirect.com',
-            'wiley.com', 'tandfonline.com', 'frontiersin.org', 'plos.org',
-            'cell.com', 'bmj.com', 'jamanetwork.com', 'thelancet.com', 'nejm.org',
-            'arxiv.org', 'biorxiv.org', 'medrxiv.org', 'ieee.org', 'acm.org',
-            'journals.sagepub.com', 'cambridge.org', 'oxford.ac.uk',
+            "pubmed.ncbi.nlm.nih.gov",
+            "pmc.ncbi.nlm.nih.gov",
+            "doi.org",
+            "mdpi.com",
+            "springer.com",
+            "nature.com",
+            "sciencedirect.com",
+            "wiley.com",
+            "tandfonline.com",
+            "frontiersin.org",
+            "plos.org",
+            "cell.com",
+            "bmj.com",
+            "jamanetwork.com",
+            "thelancet.com",
+            "nejm.org",
+            "arxiv.org",
+            "biorxiv.org",
+            "medrxiv.org",
+            "ieee.org",
+            "acm.org",
+            "journals.sagepub.com",
+            "cambridge.org",
+            "oxford.ac.uk",
         ]
         url_lower = url.lower()
         return any(domain in url_lower for domain in academic_domains)
@@ -371,19 +445,19 @@ class SerperClient(BaseAPIClient):
         """Enrich source with metadata from academic APIs."""
         try:
             # PubMed URLs
-            if 'pubmed.ncbi.nlm.nih.gov' in url:
-                pmid = re.search(r'pubmed\.ncbi\.nlm\.nih\.gov/(\d+)', url)
+            if "pubmed.ncbi.nlm.nih.gov" in url:
+                pmid = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", url)
                 if pmid:
                     return self._fetch_pubmed_metadata(pmid.group(1), url)
 
             # PMC URLs
-            if 'pmc.ncbi.nlm.nih.gov' in url:
-                pmcid = re.search(r'PMC(\d+)', url)
+            if "pmc.ncbi.nlm.nih.gov" in url:
+                pmcid = re.search(r"PMC(\d+)", url)
                 if pmcid:
                     return self._fetch_pmc_metadata(pmcid.group(1), url)
 
             # DOI URLs
-            if 'doi.org' in url:
+            if "doi.org" in url:
                 doi = self._extract_doi_from_url(url)
                 if doi:
                     return self._fetch_crossref_metadata(doi, url)
@@ -409,34 +483,34 @@ class SerperClient(BaseAPIClient):
                 return None
 
             data = response.json()
-            result = data.get('result', {}).get(pmid, {})
+            result = data.get("result", {}).get(pmid, {})
 
-            if not result or 'error' in result:
+            if not result or "error" in result:
                 return None
 
             # Extract authors
-            authors = result.get('authors', [])
+            authors = result.get("authors", [])
             author_str = self._format_authors(authors) if authors else None
 
             # Extract year
-            pubdate = result.get('pubdate', '')
+            pubdate = result.get("pubdate", "")
             year = pubdate[:4] if pubdate and len(pubdate) >= 4 else None
 
             # Extract DOI
             doi = None
-            for aid in result.get('articleids', []):
-                if aid.get('idtype') == 'doi':
-                    doi = aid.get('value')
+            for aid in result.get("articleids", []):
+                if aid.get("idtype") == "doi":
+                    doi = aid.get("value")
                     break
 
             return {
-                'title': result.get('title', '').rstrip('.'),
-                'authors': author_str,
-                'year': year,
-                'doi': doi,
-                'url': original_url,
-                'journal': result.get('fulljournalname') or result.get('source'),
-                'source_type': 'journal',
+                "title": result.get("title", "").rstrip("."),
+                "authors": author_str,
+                "year": year,
+                "doi": doi,
+                "url": original_url,
+                "journal": result.get("fulljournalname") or result.get("source"),
+                "source_type": "journal",
             }
         except Exception as e:
             logger.debug(f"PubMed API error: {e}")
@@ -454,7 +528,7 @@ class SerperClient(BaseAPIClient):
                 return None
 
             data = response.json()
-            id_list = data.get('esearchresult', {}).get('idlist', [])
+            id_list = data.get("esearchresult", {}).get("idlist", [])
 
             if not id_list:
                 return None
@@ -468,82 +542,84 @@ class SerperClient(BaseAPIClient):
                 return None
 
             data = response.json()
-            result = data.get('result', {}).get(id_list[0], {})
+            result = data.get("result", {}).get(id_list[0], {})
 
-            if not result or 'error' in result:
+            if not result or "error" in result:
                 return None
 
-            authors = result.get('authors', [])
+            authors = result.get("authors", [])
             author_str = self._format_authors(authors) if authors else None
 
-            pubdate = result.get('pubdate', '') or result.get('epubdate', '')
+            pubdate = result.get("pubdate", "") or result.get("epubdate", "")
             year = pubdate[:4] if pubdate and len(pubdate) >= 4 else None
 
             doi = None
-            for aid in result.get('articleids', []):
-                if aid.get('idtype') == 'doi':
-                    doi = aid.get('value')
+            for aid in result.get("articleids", []):
+                if aid.get("idtype") == "doi":
+                    doi = aid.get("value")
                     break
 
             return {
-                'title': result.get('title', '').rstrip('.'),
-                'authors': author_str,
-                'year': year,
-                'doi': doi,
-                'url': original_url,
-                'journal': result.get('fulljournalname') or result.get('source'),
-                'source_type': 'journal',
+                "title": result.get("title", "").rstrip("."),
+                "authors": author_str,
+                "year": year,
+                "doi": doi,
+                "url": original_url,
+                "journal": result.get("fulljournalname") or result.get("source"),
+                "source_type": "journal",
             }
         except Exception as e:
             logger.debug(f"PMC API error: {e}")
             return None
 
-    def _fetch_crossref_metadata(self, doi: str, original_url: str = None) -> Optional[Dict[str, Any]]:
+    def _fetch_crossref_metadata(
+        self, doi: str, original_url: str = None
+    ) -> Optional[Dict[str, Any]]:
         """Fetch metadata from CrossRef using DOI."""
         try:
             api_url = f"https://api.crossref.org/works/{doi}"
-            headers = {'User-Agent': 'OpenDraft/1.0 (mailto:support@opendraft.ai)'}
+            headers = {"User-Agent": "OpenDraft/1.0 (mailto:support@opendraft.ai)"}
 
             response = self.validation_session.get(api_url, headers=headers, timeout=10)
             if not response.ok:
                 return None
 
-            data = response.json().get('message', {})
+            data = response.json().get("message", {})
             if not data:
                 return None
 
             # Extract title
-            title_list = data.get('title', [])
+            title_list = data.get("title", [])
             title = title_list[0] if title_list else None
 
             # Extract authors
-            authors = data.get('author', [])
+            authors = data.get("author", [])
             author_str = None
             if authors:
                 first = authors[0]
-                last_name = first.get('family', first.get('name', 'Unknown'))
+                last_name = first.get("family", first.get("name", "Unknown"))
                 author_str = f"{last_name} et al." if len(authors) > 1 else last_name
 
             # Extract year
             year = None
-            for date_field in ['published-print', 'published-online', 'created']:
-                date_parts = data.get(date_field, {}).get('date-parts', [[]])
+            for date_field in ["published-print", "published-online", "created"]:
+                date_parts = data.get(date_field, {}).get("date-parts", [[]])
                 if date_parts and date_parts[0]:
                     year = str(date_parts[0][0])
                     break
 
             # Extract journal
-            container = data.get('container-title', [])
+            container = data.get("container-title", [])
             journal = container[0] if container else None
 
             return {
-                'title': title,
-                'authors': author_str,
-                'year': year,
-                'doi': doi,
-                'url': original_url or f"https://doi.org/{doi}",
-                'journal': journal,
-                'source_type': 'journal',
+                "title": title,
+                "authors": author_str,
+                "year": year,
+                "doi": doi,
+                "url": original_url or f"https://doi.org/{doi}",
+                "journal": journal,
+                "source_type": "journal",
             }
         except Exception as e:
             logger.debug(f"CrossRef API error: {e}")
@@ -556,7 +632,7 @@ class SerperClient(BaseAPIClient):
 
         first = authors[0]
         if isinstance(first, dict):
-            name = first.get('name', '')
+            name = first.get("name", "")
         else:
             name = str(first)
 
@@ -570,7 +646,7 @@ class SerperClient(BaseAPIClient):
     def close(self) -> None:
         """Close HTTP sessions."""
         super().close()
-        if hasattr(self, 'validation_session'):
+        if hasattr(self, "validation_session"):
             self.validation_session.close()
 
 

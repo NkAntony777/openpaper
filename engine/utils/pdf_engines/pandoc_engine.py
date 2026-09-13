@@ -5,14 +5,15 @@ ABOUTME: Professional typesetting using LaTeX with proper font rendering
 """
 
 import re
-import subprocess
 import shutil
-import yaml
+import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
-from .base import PDFEngine, PDFGenerationOptions, EngineResult
+import yaml
+
+from .base import EngineResult, PDFEngine, PDFGenerationOptions
 
 
 class PandocLatexEngine(PDFEngine):
@@ -53,15 +54,12 @@ class PandocLatexEngine(PDFEngine):
 
     def is_available(self) -> bool:
         """Check if pandoc and xelatex are available."""
-        return (
-            shutil.which('pandoc') is not None and
-            self._find_xelatex() is not None
-        )
+        return shutil.which("pandoc") is not None and self._find_xelatex() is not None
 
     def _find_xelatex(self) -> Optional[str]:
         """Find xelatex binary, checking common LaTeX installation paths."""
         # First check PATH
-        xelatex = shutil.which('xelatex')
+        xelatex = shutil.which("xelatex")
         if xelatex:
             return xelatex
 
@@ -85,10 +83,7 @@ class PandocLatexEngine(PDFEngine):
         return None
 
     def generate(
-        self,
-        md_file: Path,
-        output_pdf: Path,
-        options: PDFGenerationOptions
+        self, md_file: Path, output_pdf: Path, options: PDFGenerationOptions
     ) -> EngineResult:
         """
         Generate PDF via Markdown → LaTeX → PDF pipeline.
@@ -104,16 +99,12 @@ class PandocLatexEngine(PDFEngine):
         # Validate inputs
         error = self.validate_inputs(md_file, output_pdf)
         if error:
-            return EngineResult(
-                success=False,
-                engine_name=self.get_name(),
-                error_message=error
-            )
+            return EngineResult(success=False, engine_name=self.get_name(), error_message=error)
 
         try:
             # Normalize YAML field names for Pandoc compatibility
             # (Pandoc only recognizes English field names like 'title', 'author', 'date')
-            with open(md_file, 'r', encoding='utf-8') as f:
+            with open(md_file, "r", encoding="utf-8") as f:
                 md_content = f.read()
 
             # CRITICAL: Save original content BEFORE normalization for formatter check
@@ -136,7 +127,7 @@ class PandocLatexEngine(PDFEngine):
             # Code blocks cause massive verbatim sections in LaTeX that truncate documents
             # (e.g., 122 pages → 39 pages due to unbreakable monospace text)
             md_content = self._strip_code_blocks(md_content)
-            
+
             # BUG #6 FIX: Normalize bullet list formatting for consistent PDF rendering
             # Converts `*   ` and `* ` variations to standard `- ` format
             md_content = self._normalize_bullet_lists(md_content)
@@ -149,16 +140,18 @@ class PandocLatexEngine(PDFEngine):
 
             # Write normalized content to temporary file for Pandoc
             import tempfile
+
             temp_md = None
             temp_fd = None
             try:
-                temp_fd, temp_path = tempfile.mkstemp(suffix='.md', text=True)
+                temp_fd, temp_path = tempfile.mkstemp(suffix=".md", text=True)
                 temp_md = Path(temp_path)
-                with open(temp_md, 'w', encoding='utf-8') as f:
+                with open(temp_md, "w", encoding="utf-8") as f:
                     f.write(md_content)
             finally:
                 if temp_fd is not None:
                     import os
+
                     os.close(temp_fd)
 
             # Create LaTeX preamble for header customization
@@ -169,7 +162,7 @@ class PandocLatexEngine(PDFEngine):
             preamble_path = preamble_path.resolve()  # Get absolute path
 
             # Write preamble
-            with open(preamble_path, 'w', encoding='utf-8') as f:
+            with open(preamble_path, "w", encoding="utf-8") as f:
                 f.write(latex_preamble)
 
             # Convert markdown to PDF using Pandoc + LaTeX (use normalized temp file)
@@ -195,7 +188,7 @@ class PandocLatexEngine(PDFEngine):
             return EngineResult(
                 success=False,
                 engine_name=self.get_name(),
-                error_message=f"Unexpected error: {str(e)}"
+                error_message=f"Unexpected error: {str(e)}",
             )
 
     def _create_latex_preamble(self, options: PDFGenerationOptions, md_content: str = "") -> str:
@@ -218,17 +211,20 @@ class PandocLatexEngine(PDFEngine):
         """
         # Parse line spacing for LaTeX (2.0 = double spacing)
         if options.line_spacing >= 1.9:
-            spacing_command = r'\doublespacing'
+            spacing_command = r"\doublespacing"
         elif options.line_spacing >= 1.4:
-            spacing_command = r'\onehalfspacing'
+            spacing_command = r"\onehalfspacing"
         else:
-            spacing_command = r'\singlespacing'
+            spacing_command = r"\singlespacing"
 
-        preamble = r'''\PassOptionsToPackage{hyphens}{url}
+        preamble = (
+            r"""\PassOptionsToPackage{hyphens}{url}
 \usepackage{xurl}
 \usepackage{etoolbox}
 \usepackage{setspace}
-''' + spacing_command + r'''
+"""
+            + spacing_command
+            + r"""
 
 % Unicode font support for XeLaTeX (handles CJK and all Unicode)
 \usepackage{fontspec}
@@ -287,15 +283,17 @@ class PandocLatexEngine(PDFEngine):
 \let\oldlongtable\longtable
 \let\endoldlongtable\endlongtable
 \renewenvironment{longtable}{\small\oldlongtable}{\endoldlongtable}
-'''
+"""
+        )
 
         # Add APA 7th edition title page formatting if metadata provided
         # ORIGINAL APPROACH: Use titling package to customize Pandoc's template
         # Pandoc reads YAML (title, subtitle, author, date, etc.) and calls \maketitle
         # Showcase theses have RICH YAML → beautiful automated cover page
-        if any([options.title, options.author, options.institution,
-                options.course, options.instructor]):
-            preamble += r'''
+        if any(
+            [options.title, options.author, options.institution, options.course, options.instructor]
+        ):
+            preamble += r"""
 % Professional Academic Title Page - Balanced Layout
 \usepackage{titling}
 \renewcommand{\maketitle}{%
@@ -303,115 +301,115 @@ class PandocLatexEngine(PDFEngine):
     \centering
     % Institution Block - top
     \vspace*{0.5in}
-'''
+"""
             # Add institution if provided
             if options.institution:
-                preamble += f'''    {{\\normalsize\\scshape {options.institution}\\par}}
-'''
+                preamble += f"""    {{\\normalsize\\scshape {options.institution}\\par}}
+"""
             # Add faculty if provided
-            if hasattr(options, 'faculty') and options.faculty:
-                preamble += f'''    \\vspace{{0.08cm}}
+            if hasattr(options, "faculty") and options.faculty:
+                preamble += f"""    \\vspace{{0.08cm}}
     {{\\small {options.faculty}\\par}}
-'''
+"""
             if options.department:
-                preamble += f'''    \\vspace{{0.08cm}}
+                preamble += f"""    \\vspace{{0.08cm}}
     {{\\small\\itshape {options.department}\\par}}
-'''
+"""
 
-            preamble += r'''
+            preamble += r"""
     \vfill
     % Title Block - center
-'''
+"""
             if options.title:
-                preamble += f'''    {{\\Large\\bfseries {options.title}\\par}}
-'''
+                preamble += f"""    {{\\Large\\bfseries {options.title}\\par}}
+"""
             if options.subtitle:
-                preamble += f'''    \\vspace{{0.25cm}}
+                preamble += f"""    \\vspace{{0.25cm}}
     {{\\normalsize\\itshape {options.subtitle}\\par}}
-'''
+"""
 
             # Add project type descriptor
             if options.project_type:
-                preamble += f'''    \\vspace{{0.5cm}}
+                preamble += f"""    \\vspace{{0.5cm}}
     {{\\small\\scshape {options.project_type}\\par}}
-'''
+"""
 
             # Add degree
             if options.course:  # course field holds degree info
-                preamble += f'''    \\vspace{{0.2cm}}
+                preamble += f"""    \\vspace{{0.2cm}}
     {{\\small submitted in partial fulfillment of the requirements for the degree of\\par}}
     \\vspace{{0.1cm}}
     {{\\normalsize\\bfseries {options.course}\\par}}
-'''
+"""
 
-            preamble += r'''
+            preamble += r"""
     \vfill
     % Author Block
     {\small submitted by\par}
     \vspace{0.15cm}
-'''
+"""
             if options.author:
-                preamble += f'''    {{\\normalsize\\bfseries {options.author}\\par}}
-'''
+                preamble += f"""    {{\\normalsize\\bfseries {options.author}\\par}}
+"""
             # Student ID or Matriculation number
             if options.student_id:
-                preamble += f'''    \\vspace{{0.08cm}}
+                preamble += f"""    \\vspace{{0.08cm}}
     {{\\small Matriculation No.: {options.student_id}\\par}}
-'''
-            if hasattr(options, 'matriculation_number') and options.matriculation_number:
-                preamble += f'''    \\vspace{{0.08cm}}
+"""
+            if hasattr(options, "matriculation_number") and options.matriculation_number:
+                preamble += f"""    \\vspace{{0.08cm}}
     {{\\small Matriculation No.: {options.matriculation_number}\\par}}
-'''
+"""
 
-            preamble += r'''
+            preamble += r"""
     \vfill
     % Supervision Block
-'''
+"""
             # Add advisor/supervisor
             if options.instructor:
-                preamble += f'''    {{\\small\\bfseries First Supervisor:}} {{\\small {options.instructor}\\par}}
-'''
+                preamble += f"""    {{\\small\\bfseries First Supervisor:}} {{\\small {options.instructor}\\par}}
+"""
             # Add second examiner if provided
-            if hasattr(options, 'second_examiner') and options.second_examiner:
-                preamble += f'''    \\vspace{{0.08cm}}
+            if hasattr(options, "second_examiner") and options.second_examiner:
+                preamble += f"""    \\vspace{{0.08cm}}
     {{\\small\\bfseries Second Examiner:}} {{\\small {options.second_examiner}\\par}}
-'''
+"""
 
             # Add system credit
             if options.system_credit:
-                preamble += f'''    \\vspace{{0.2cm}}
+                preamble += f"""    \\vspace{{0.2cm}}
     {{\\footnotesize\\itshape {options.system_credit}\\par}}
-'''
+"""
 
-            preamble += r'''
+            preamble += r"""
     \vfill
     % Bottom section - Location and Date
-'''
+"""
             # Add location if provided
-            if hasattr(options, 'location') and options.location:
-                preamble += f'''    {{\\small {options.location}\\par}}
-'''
+            if hasattr(options, "location") and options.location:
+                preamble += f"""    {{\\small {options.location}\\par}}
+"""
             # Add submission date, regular date, or default to today
-            if hasattr(options, 'submission_date') and options.submission_date:
+            if hasattr(options, "submission_date") and options.submission_date:
                 display_date = options.submission_date
             elif options.date:
                 display_date = options.date
             else:
-                display_date = datetime.now().strftime('%B %d, %Y')
-            preamble += f'''    \\vspace{{0.08cm}}
+                display_date = datetime.now().strftime("%B %d, %Y")
+            preamble += f"""    \\vspace{{0.08cm}}
     {{\\small {display_date}\\par}}
-'''
+"""
 
-            preamble += r'''
+            preamble += r"""
     \vspace{0.5in}
   \end{titlepage}
 }
 
-'''
+"""
 
         # Add front matter page numbering (roman numerals) if TOC enabled
         if options.enable_toc:
-            preamble += r'''
+            preamble += r"""
 % Front matter page numbering (roman numerals for title page + TOC)
 \usepackage{tocloft}
 \pagenumbering{roman}
@@ -425,16 +423,12 @@ class PandocLatexEngine(PDFEngine):
     \pagenumbering{arabic}%
   }%
 }
-'''
+"""
 
         return preamble
 
     def _run_pandoc(
-        self,
-        md_file: Path,
-        output_pdf: Path,
-        preamble_path: Path,
-        options: PDFGenerationOptions
+        self, md_file: Path, output_pdf: Path, preamble_path: Path, options: PDFGenerationOptions
     ) -> EngineResult:
         """
         Run Pandoc to convert markdown to PDF.
@@ -454,47 +448,54 @@ class PandocLatexEngine(PDFEngine):
             # Pandoc command with default template + custom preamble
             # This is more robust than a full custom template
             # Use absolute paths to avoid any path resolution issues
-            margin = options.margins.replace('in', 'in').replace('cm', 'cm')
+            margin = options.margins.replace("in", "in").replace("cm", "cm")
 
             # Find xelatex path (may not be in PATH)
             xelatex_path = self._find_xelatex()
 
             cmd = [
-                'pandoc',
+                "pandoc",
                 str(md_file.resolve()),
-                '-o', str(output_pdf.resolve()),
-                f'--pdf-engine={xelatex_path}',  # Use XeLaTeX for full Unicode support
-                '--include-in-header', str(preamble_path.resolve()),
-                '--from', 'markdown+autolink_bare_uris+raw_tex',
-                '--variable', f'geometry:margin={margin}',
-                '--variable', f'fontsize={options.font_size}',
-                '--variable', 'papersize:letter',
-                '--variable', 'documentclass:article',
+                "-o",
+                str(output_pdf.resolve()),
+                f"--pdf-engine={xelatex_path}",  # Use XeLaTeX for full Unicode support
+                "--include-in-header",
+                str(preamble_path.resolve()),
+                "--from",
+                "markdown+autolink_bare_uris+raw_tex",
+                "--variable",
+                f"geometry:margin={margin}",
+                "--variable",
+                f"fontsize={options.font_size}",
+                "--variable",
+                "papersize:letter",
+                "--variable",
+                "documentclass:article",
             ]
 
             # Add title page metadata if provided
             if options.title:
-                cmd.extend(['--variable', f'title={options.title}'])
+                cmd.extend(["--variable", f"title={options.title}"])
             if options.author:
-                cmd.extend(['--variable', f'author={options.author}'])
+                cmd.extend(["--variable", f"author={options.author}"])
             if options.date:
-                cmd.extend(['--variable', f'date={options.date}'])
+                cmd.extend(["--variable", f"date={options.date}"])
 
             # Add institutional metadata for professional cover page
             if options.institution:
-                cmd.extend(['--variable', f'institution={options.institution}'])
+                cmd.extend(["--variable", f"institution={options.institution}"])
             if options.department:
-                cmd.extend(['--variable', f'department={options.department}'])
+                cmd.extend(["--variable", f"department={options.department}"])
             if options.course:
-                cmd.extend(['--variable', f'course={options.course}'])
+                cmd.extend(["--variable", f"course={options.course}"])
             if options.instructor:
-                cmd.extend(['--variable', f'instructor={options.instructor}'])
+                cmd.extend(["--variable", f"instructor={options.instructor}"])
 
             # Add table of contents if enabled
             if options.enable_toc:
-                cmd.append('--toc')
-                cmd.extend(['--variable', f'toc-depth={options.toc_depth}'])
-                cmd.extend(['--variable', 'toc-title=Table of Contents'])
+                cmd.append("--toc")
+                cmd.extend(["--variable", f"toc-depth={options.toc_depth}"])
+                cmd.extend(["--variable", "toc-title=Table of Contents"])
 
             # NOTE: Do NOT use --number-sections because draft markdown files
             # typically have manual section numbering embedded (e.g., "2.1 The Evolution...")
@@ -506,56 +507,53 @@ class PandocLatexEngine(PDFEngine):
                 capture_output=True,
                 text=True,
                 timeout=180,  # 3 minute timeout for LaTeX compilation
-                cwd=output_pdf.parent  # Run in output directory
+                cwd=output_pdf.parent,  # Run in output directory
             )
 
             if result.returncode != 0:
                 # Extract useful error message from LaTeX output
-                error_lines = result.stderr.split('\n')
+                error_lines = result.stderr.split("\n")
                 # Look for actual error messages (lines starting with !)
-                latex_errors = [line for line in error_lines if line.startswith('!')]
+                latex_errors = [line for line in error_lines if line.startswith("!")]
 
                 if latex_errors:
-                    error_msg = '\n'.join(latex_errors[:3])  # First 3 errors
+                    error_msg = "\n".join(latex_errors[:3])  # First 3 errors
                 else:
                     error_msg = result.stderr[-500:] if len(result.stderr) > 500 else result.stderr
 
                 return EngineResult(
                     success=False,
                     engine_name=self.get_name(),
-                    error_message=f"Pandoc/LaTeX compilation failed:\n{error_msg}"
+                    error_message=f"Pandoc/LaTeX compilation failed:\n{error_msg}",
                 )
 
             if not output_pdf.exists():
                 return EngineResult(
                     success=False,
                     engine_name=self.get_name(),
-                    error_message="Pandoc did not generate PDF file"
+                    error_message="Pandoc did not generate PDF file",
                 )
 
             # Check for warnings in LaTeX output
             warnings = []
-            if 'Warning' in result.stdout or 'Warning' in result.stderr:
+            if "Warning" in result.stdout or "Warning" in result.stderr:
                 warnings.append("LaTeX generated warnings (non-critical)")
 
             return EngineResult(
-                success=True,
-                engine_name=self.get_name(),
-                output_path=output_pdf,
-                warnings=warnings
+                success=True, engine_name=self.get_name(), output_path=output_pdf, warnings=warnings
             )
 
         except subprocess.TimeoutExpired:
             return EngineResult(
                 success=False,
                 engine_name=self.get_name(),
-                error_message="Pandoc/LaTeX compilation timed out (>3 minutes)"
+                error_message="Pandoc/LaTeX compilation timed out (>3 minutes)",
             )
         except Exception as e:
             return EngineResult(
                 success=False,
                 engine_name=self.get_name(),
-                error_message=f"Pandoc execution failed: {str(e)}"
+                error_message=f"Pandoc execution failed: {str(e)}",
             )
 
     def _cleanup_latex_files(self, pdf_path: Path) -> None:
@@ -566,7 +564,7 @@ class PandocLatexEngine(PDFEngine):
             pdf_path: Path to generated PDF (used to find auxiliary files)
         """
         # LaTeX generates many auxiliary files
-        aux_extensions = ['.aux', '.log', '.out', '.toc', '.lof', '.lot']
+        aux_extensions = [".aux", ".log", ".out", ".toc", ".lof", ".lot"]
 
         for ext in aux_extensions:
             aux_file = pdf_path.parent / f"{pdf_path.stem}{ext}"
@@ -586,12 +584,12 @@ class PandocLatexEngine(PDFEngine):
         Returns:
             Dictionary of YAML metadata (empty dict if no YAML found)
         """
-        if not md_content.strip().startswith('---'):
+        if not md_content.strip().startswith("---"):
             return {}
 
         try:
             # Extract YAML frontmatter (between first and second ---)
-            parts = md_content.split('---', 2)
+            parts = md_content.split("---", 2)
             if len(parts) < 3:
                 return {}
 
@@ -623,51 +621,48 @@ class PandocLatexEngine(PDFEngine):
         Returns:
             Markdown content with normalized YAML field names
         """
-        import re
 
         # Translation map: localized → English
         field_translations = {
             # German (18 fields)
-            'titel:': 'title:',
-            'untertitel:': 'subtitle:',
-            'autor:': 'author:',
-            'datum:': 'date:',
-            'wortzahl:': 'word_count:',
-            'seitenzahl:': 'page_count:',
-            'sprache:': 'language:',
-            'thema:': 'topic:',
-            'schlagwörter:': 'keywords:',
-            'qualitäts_bewertung:': 'quality_score:',
-            'system_ersteller:': 'system_creator:',
-            'zitate_verifiziert:': 'citations_verified:',
-            'visuelle_elemente:': 'visual_elements:',
-            'generierungs_methode:': 'generation_method:',
-            'beschreibung_showcase:': 'showcase_description:',
-            'system_fähigkeiten:': 'system_capabilities:',
-            'aufruf_zur_aktion:': 'call_to_action:',
-            'lizenz:': 'license:',
-
+            "titel:": "title:",
+            "untertitel:": "subtitle:",
+            "autor:": "author:",
+            "datum:": "date:",
+            "wortzahl:": "word_count:",
+            "seitenzahl:": "page_count:",
+            "sprache:": "language:",
+            "thema:": "topic:",
+            "schlagwörter:": "keywords:",
+            "qualitäts_bewertung:": "quality_score:",
+            "system_ersteller:": "system_creator:",
+            "zitate_verifiziert:": "citations_verified:",
+            "visuelle_elemente:": "visual_elements:",
+            "generierungs_methode:": "generation_method:",
+            "beschreibung_showcase:": "showcase_description:",
+            "system_fähigkeiten:": "system_capabilities:",
+            "aufruf_zur_aktion:": "call_to_action:",
+            "lizenz:": "license:",
             # Spanish (5 fields)
-            'título:': 'title:',
-            'subtítulo:': 'subtitle:',
-            'fecha:': 'date:',
-            'recuento_de_palabras:': 'word_count:',
-            'idioma:': 'language:',
-
+            "título:": "title:",
+            "subtítulo:": "subtitle:",
+            "fecha:": "date:",
+            "recuento_de_palabras:": "word_count:",
+            "idioma:": "language:",
             # French (5 fields)
-            'titre:': 'title:',
-            'sous-titre:': 'subtitle:',
-            'auteur:': 'author:',
-            'nombre_de_mots:': 'word_count:',
-            'langue:': 'language:',
+            "titre:": "title:",
+            "sous-titre:": "subtitle:",
+            "auteur:": "author:",
+            "nombre_de_mots:": "word_count:",
+            "langue:": "language:",
         }
 
         # Only process if YAML frontmatter exists
-        if not md_content.strip().startswith('---'):
+        if not md_content.strip().startswith("---"):
             return md_content
 
         # Extract YAML frontmatter
-        parts = md_content.split('---', 2)
+        parts = md_content.split("---", 2)
         if len(parts) < 3:
             return md_content
 
@@ -677,40 +672,41 @@ class PandocLatexEngine(PDFEngine):
         # Translate field names (case-insensitive)
         for localized, english in field_translations.items():
             yaml_content = re.sub(
-                f'^{re.escape(localized)}',
+                f"^{re.escape(localized)}",
                 english,
                 yaml_content,
-                flags=re.MULTILINE | re.IGNORECASE
+                flags=re.MULTILINE | re.IGNORECASE,
             )
 
         # Strip custom fields that Pandoc doesn't recognize
         # Only keep: title, subtitle, author, date, abstract
         # CRITICAL: For showcase theses (with custom cover pages), EXCLUDE title/subtitle
         # to prevent Pandoc from inserting duplicate title headings that appear in ToC
-        pandoc_recognized_fields = ['title', 'subtitle', 'author', 'date', 'abstract']
+        pandoc_recognized_fields = ["title", "subtitle", "author", "date", "abstract"]
 
         # Check if this is a showcase draft (has custom professional cover page)
         # Detection: either has showcase_description field OR project_type contains "showcase"
-        is_showcase = ('showcase_description:' in yaml_content.lower() or
-                      'showcase' in yaml_content.lower())
+        is_showcase = (
+            "showcase_description:" in yaml_content.lower() or "showcase" in yaml_content.lower()
+        )
 
         # If showcase draft, remove title/subtitle from allowed fields
         # The custom titlepage already renders these - Pandoc shouldn't duplicate them
         if is_showcase:
-            pandoc_recognized_fields = ['author', 'date', 'abstract']
+            pandoc_recognized_fields = ["author", "date", "abstract"]
 
-        yaml_lines = yaml_content.split('\n')
+        yaml_lines = yaml_content.split("\n")
         filtered_lines = []
 
         for line in yaml_lines:
             line_stripped = line.strip()
-            if not line_stripped or line_stripped.startswith('#'):
+            if not line_stripped or line_stripped.startswith("#"):
                 # Keep empty lines and comments
                 filtered_lines.append(line)
                 continue
 
             # Check if this line starts with a field name
-            field_match = re.match(r'^(\w+):', line_stripped)
+            field_match = re.match(r"^(\w+):", line_stripped)
             if field_match:
                 field_name = field_match.group(1).lower()
                 if field_name in pandoc_recognized_fields:
@@ -720,10 +716,10 @@ class PandocLatexEngine(PDFEngine):
                 # Keep continuation lines (indented or quoted multi-line values)
                 filtered_lines.append(line)
 
-        yaml_content = '\n'.join(filtered_lines)
+        yaml_content = "\n".join(filtered_lines)
 
         # Reconstruct markdown
-        return f'---{yaml_content}---{rest_content}'
+        return f"---{yaml_content}---{rest_content}"
 
     def _unwrap_markdown_fence(self, md_content: str) -> str:
         """
@@ -746,14 +742,12 @@ class PandocLatexEngine(PDFEngine):
         Returns:
             Markdown content with outer wrapper removed
         """
-        lines = md_content.strip().split('\n')
+        lines = md_content.strip().split("\n")
 
         # Check if first line is ```markdown and last line is ```
-        if (len(lines) >= 3 and
-            lines[0].strip().startswith('```') and
-            lines[-1].strip() == '```'):
+        if len(lines) >= 3 and lines[0].strip().startswith("```") and lines[-1].strip() == "```":
             # Remove first and last line
-            return '\n'.join(lines[1:-1])
+            return "\n".join(lines[1:-1])
 
         return md_content
 
@@ -773,15 +767,14 @@ class PandocLatexEngine(PDFEngine):
         Returns:
             Markdown content with first # heading removed (if showcase draft)
         """
-        import re
 
         # Only process showcase theses (check for "showcase" in ORIGINAL content)
         # Use original because normalization strips custom fields that contain "showcase"
-        if 'showcase' not in original_content.lower():
+        if "showcase" not in original_content.lower():
             return md_content
 
         # Split by YAML frontmatter
-        parts = md_content.split('---', 2)
+        parts = md_content.split("---", 2)
         if len(parts) < 3:
             return md_content
 
@@ -791,13 +784,24 @@ class PandocLatexEngine(PDFEngine):
         # NEVER remove standard academic section headings
         # These are legitimate sections, not duplicate titles
         protected_headings = [
-            'abstract', 'introduction', 'literature', 'methodology', 'method',
-            'results', 'discussion', 'conclusion', 'references', 'appendix',
-            'background', 'chapter', 'analysis', 'findings'
+            "abstract",
+            "introduction",
+            "literature",
+            "methodology",
+            "method",
+            "results",
+            "discussion",
+            "conclusion",
+            "references",
+            "appendix",
+            "background",
+            "chapter",
+            "analysis",
+            "findings",
         ]
 
         # Find first level-1 heading
-        match = re.search(r'^\s*#\s+([^\n]+)\n', body_part, flags=re.MULTILINE)
+        match = re.search(r"^\s*#\s+([^\n]+)\n", body_part, flags=re.MULTILINE)
         if not match:
             return md_content
 
@@ -810,16 +814,10 @@ class PandocLatexEngine(PDFEngine):
             return md_content
 
         # Remove the title heading (it's a duplicate of the cover page title)
-        body_part = re.sub(
-            r'^\s*#\s+[^\n]+\n+',
-            r'',
-            body_part,
-            count=1,
-            flags=re.MULTILINE
-        )
+        body_part = re.sub(r"^\s*#\s+[^\n]+\n+", r"", body_part, count=1, flags=re.MULTILINE)
 
         # Reconstruct
-        return f'---{yaml_part}---{body_part}'
+        return f"---{yaml_part}---{body_part}"
 
     def _strip_code_blocks(self, md_content: str) -> str:
         """
@@ -841,11 +839,12 @@ class PandocLatexEngine(PDFEngine):
             Markdown content with all code blocks removed
         """
         import logging
+
         logger = logging.getLogger(__name__)
 
         # Separate YAML frontmatter from body to avoid processing YAML fences
-        if md_content.strip().startswith('---'):
-            parts = md_content.split('---', 2)
+        if md_content.strip().startswith("---"):
+            parts = md_content.split("---", 2)
             if len(parts) >= 3:
                 yaml_section = f"---{parts[1]}---"
                 body_content = parts[2]
@@ -858,11 +857,11 @@ class PandocLatexEngine(PDFEngine):
             body_content = md_content
 
         # First pass: find orphaned code fences (opening with no closing)
-        lines = body_content.split('\n')
+        lines = body_content.split("\n")
         fence_stack = []  # Track line indices of opening fences
 
         for i, line in enumerate(lines):
-            if line.strip().startswith('```'):
+            if line.strip().startswith("```"):
                 if fence_stack:
                     # This closes the most recent opening fence
                     fence_stack.pop()
@@ -873,14 +872,16 @@ class PandocLatexEngine(PDFEngine):
         # Any remaining fences in the stack are orphaned (no closing fence)
         orphaned_fence_lines = set(fence_stack)
         if orphaned_fence_lines:
-            logger.warning(f"Found {len(orphaned_fence_lines)} orphaned code fence(s) at lines: {list(orphaned_fence_lines)}")
+            logger.warning(
+                f"Found {len(orphaned_fence_lines)} orphaned code fence(s) at lines: {list(orphaned_fence_lines)}"
+            )
 
         # Second pass: remove code blocks but preserve content after orphaned fences
         result = []
         in_code_block = False
 
         for i, line in enumerate(lines):
-            if line.strip().startswith('```'):
+            if line.strip().startswith("```"):
                 if i in orphaned_fence_lines:
                     # Skip orphaned fence line but don't enter code block mode
                     continue
@@ -891,40 +892,38 @@ class PandocLatexEngine(PDFEngine):
             if not in_code_block:
                 result.append(line)
 
-        cleaned_body = '\n'.join(result)
+        cleaned_body = "\n".join(result)
 
         # Reconstruct with YAML intact
         return yaml_section + cleaned_body if yaml_section else cleaned_body
 
-
     def _normalize_bullet_lists(self, md_content: str) -> str:
         """
         Normalize markdown bullet list formatting for consistent PDF rendering.
-        
+
         Fixes BUG #6: Bullet points (`*   ...`) not rendering as proper lists.
-        
+
         The AI agents sometimes use inconsistent bullet formatting:
         - `*   ` (asterisk with multiple spaces)
         - `* ` (asterisk with one space)
         - `-  ` (hyphen with multiple spaces)
-        
+
         Pandoc/LaTeX may not recognize these variations as proper lists,
         rendering them as literal asterisks instead of bullet characters.
-        
+
         This method normalizes all bullet variations to the standard format:
         `- ` (hyphen with single space)
-        
+
         Args:
             md_content: Markdown content with potential bullet formatting issues
-            
+
         Returns:
             Markdown content with normalized bullet formatting
         """
-        import re
-        
+
         # Separate YAML frontmatter from body to avoid processing YAML
-        if md_content.strip().startswith('---'):
-            parts = md_content.split('---', 2)
+        if md_content.strip().startswith("---"):
+            parts = md_content.split("---", 2)
             if len(parts) >= 3:
                 yaml_section = f"---{parts[1]}---"
                 body_content = parts[2]
@@ -934,19 +933,19 @@ class PandocLatexEngine(PDFEngine):
         else:
             yaml_section = ""
             body_content = md_content
-        
+
         # Normalize bullet patterns in body only
         # Pattern 1: `*   ` or `*  ` or `* ` at start of line -> `- `
-        body_content = re.sub(r'^\*\s+', '- ', body_content, flags=re.MULTILINE)
-        
+        body_content = re.sub(r"^\*\s+", "- ", body_content, flags=re.MULTILINE)
+
         # Pattern 2: Multiple spaces after hyphen -> single space
-        body_content = re.sub(r'^-\s{2,}', '- ', body_content, flags=re.MULTILINE)
-        
+        body_content = re.sub(r"^-\s{2,}", "- ", body_content, flags=re.MULTILINE)
+
         # Pattern 3: Nested bullets with inconsistent spacing
         # `  *   ` -> `  - ` (preserve indentation)
-        body_content = re.sub(r'^(\s+)\*\s+', r'\1- ', body_content, flags=re.MULTILINE)
-        body_content = re.sub(r'^(\s+)-\s{2,}', r'\1- ', body_content, flags=re.MULTILINE)
-        
+        body_content = re.sub(r"^(\s+)\*\s+", r"\1- ", body_content, flags=re.MULTILINE)
+        body_content = re.sub(r"^(\s+)-\s{2,}", r"\1- ", body_content, flags=re.MULTILINE)
+
         return yaml_section + body_content if yaml_section else body_content
 
     def _sanitize_unicode_for_latex(self, md_content: str) -> str:
@@ -965,27 +964,25 @@ class PandocLatexEngine(PDFEngine):
         """
         replacements = {
             # Fullwidth punctuation (common in East Asian sources)
-            '：': ':',    # U+FF1A fullwidth colon
-            '，': ',',    # U+FF0C fullwidth comma
-            '（': '(',    # U+FF08 fullwidth left paren
-            '）': ')',    # U+FF09 fullwidth right paren
-            '　': ' ',    # U+3000 ideographic space
-
+            "：": ":",  # U+FF1A fullwidth colon
+            "，": ",",  # U+FF0C fullwidth comma
+            "（": "(",  # U+FF08 fullwidth left paren
+            "）": ")",  # U+FF09 fullwidth right paren
+            "　": " ",  # U+3000 ideographic space
             # Typographic quotes and dashes
-            ''': "'",    # U+2018 left single quotation mark
-            ''': "'",    # U+2019 right single quotation mark
-            '"': '"',    # U+201C left double quotation mark
-            '"': '"',    # U+201D right double quotation mark
-            '–': '-',    # U+2013 en dash
-            '—': '--',   # U+2014 em dash
-            '…': '...', # U+2026 horizontal ellipsis
-
+            """: "'",    # U+2018 left single quotation mark
+            """: "'",  # U+2019 right single quotation mark
+            "“": '"',  # U+201C left double quotation mark
+            "”": '"',  # U+201D right double quotation mark
+            "–": "-",  # U+2013 en dash
+            "—": "--",  # U+2014 em dash
+            "…": "...",  # U+2026 horizontal ellipsis
             # Korean Hangul characters (replace with romanized equivalents)
             # FIXED: Korean character 초 (U+CD08) causing LibreOffice fallback
-            '초': 'cho',  # U+CD08 Korean "cho" (initial)
-            '기': 'gi',   # U+AE30 Korean "gi" (machine/base)
-            '코': 'ko',   # U+CF54 Korean "ko" (code)
-            '드': 'deu',  # U+B4DC Korean "deu" (de)
+            "초": "cho",  # U+CD08 Korean "cho" (initial)
+            "기": "gi",  # U+AE30 Korean "gi" (machine/base)
+            "코": "ko",  # U+CF54 Korean "ko" (code)
+            "드": "deu",  # U+B4DC Korean "deu" (de)
         }
 
         for unicode_char, ascii_equiv in replacements.items():
@@ -1009,47 +1006,46 @@ class PandocLatexEngine(PDFEngine):
         2. Fixes `Https://` to `https://` (common AI hallucination)
         3. Escapes remaining special chars in plain text (outside URLs and math)
         """
-        import re
 
         # Separate YAML frontmatter from body
-        if md_content.strip().startswith('---'):
-            parts = md_content.split('---', 2)
+        if md_content.strip().startswith("---"):
+            parts = md_content.split("---", 2)
             if len(parts) >= 3:
-                yaml_section = f'---{parts[1]}---'
+                yaml_section = f"---{parts[1]}---"
                 body_content = parts[2]
             else:
-                yaml_section = ''
+                yaml_section = ""
                 body_content = md_content
         else:
-            yaml_section = ''
+            yaml_section = ""
             body_content = md_content
 
         # Fix 1: Normalize Https:// to https:// (AI sometimes capitalizes)
-        body_content = re.sub(r'\bHttps://', 'https://', body_content)
-        body_content = re.sub(r'\bHttp://', 'http://', body_content)
+        body_content = re.sub(r"\bHttps://", "https://", body_content)
+        body_content = re.sub(r"\bHttp://", "http://", body_content)
 
         # Fix 2: Wrap bare URLs in angle brackets for Pandoc to handle properly
-        url_pattern = r'(?<![<\[])(https?://[^\s\)\]>]+)(?![>\]])'
-        body_content = re.sub(url_pattern, r'<\1>', body_content)
+        url_pattern = r"(?<![<\[])(https?://[^\s\)\]>]+)(?![>\]])"
+        body_content = re.sub(url_pattern, r"<\1>", body_content)
 
         # Fix 3: Escape underscores in plain text (outside URLs, math mode, and emphasis)
-        lines = body_content.split('\n')
+        lines = body_content.split("\n")
         processed_lines = []
 
         for line in lines:
-            if '$' in line:
+            if "$" in line:
                 processed_lines.append(line)
                 continue
-            if '<http' in line:
+            if "<http" in line:
                 processed_lines.append(line)
                 continue
-            if line.strip().startswith('|') and line.strip().endswith('|'):
+            if line.strip().startswith("|") and line.strip().endswith("|"):
                 processed_lines.append(line)
                 continue
-            if '_' in line and not re.search(r'[*_]{1,2}\w+[*_]{1,2}', line):
-                line = re.sub(r'(?<!\\)_(?!\w+_)', r'\\_', line)
+            if "_" in line and not re.search(r"[*_]{1,2}\w+[*_]{1,2}", line):
+                line = re.sub(r"(?<!\\)_(?!\w+_)", r"\\_", line)
             processed_lines.append(line)
 
-        body_content = '\n'.join(processed_lines)
+        body_content = "\n".join(processed_lines)
 
         return yaml_section + body_content if yaml_section else body_content

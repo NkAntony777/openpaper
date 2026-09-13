@@ -4,9 +4,9 @@ ABOUTME: Firecrawl API client for web page scraping and content extraction
 ABOUTME: Drop-in replacement for OpenPull/crawl4ai using Firecrawl's cloud API
 """
 
-import os
 import logging
-from typing import Optional, Dict, Any, List
+import os
+from typing import Any, Dict, Optional
 
 try:
     import requests
@@ -59,7 +59,7 @@ class FirecrawlClient:
         if load_dotenv is not None:
             load_dotenv()
 
-        self.api_key = api_key or os.getenv('FIRECRAWL_API_KEY')
+        self.api_key = api_key or os.getenv("FIRECRAWL_API_KEY")
         self.timeout = timeout
         self.max_retries = max_retries
 
@@ -68,10 +68,12 @@ class FirecrawlClient:
 
         # Session for connection pooling
         self.session = requests.Session()
-        self.session.headers.update({
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json',
-        })
+        self.session.headers.update(
+            {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+        )
 
     @property
     def enabled(self) -> bool:
@@ -99,16 +101,16 @@ class FirecrawlClient:
         try:
             response = self._call_scrape_api(url)
 
-            if response.get('success'):
+            if response.get("success"):
                 return {
-                    'success': True,
-                    'content': response.get('markdown', ''),
-                    'html': response.get('html', ''),
-                    'metadata': response.get('metadata', {}),
-                    'url': url,
+                    "success": True,
+                    "content": response.get("markdown", ""),
+                    "html": response.get("html", ""),
+                    "metadata": response.get("metadata", {}),
+                    "url": url,
                 }
             else:
-                error = response.get('error', 'Unknown Firecrawl error')
+                error = response.get("error", "Unknown Firecrawl error")
                 logger.warning(f"Firecrawl scrape failed for {url}: {error}")
                 return self._fallback_scrape(url)
 
@@ -129,10 +131,10 @@ class FirecrawlClient:
         endpoint = f"{self.FIRECRAWL_API_URL}/scrape"
 
         payload = {
-            'url': url,
-            'formats': ['markdown', 'html'],
-            'onlyMainContent': True,  # Extract main content only
-            'waitFor': 2000,  # Wait for JS to load (ms)
+            "url": url,
+            "formats": ["markdown", "html"],
+            "onlyMainContent": True,  # Extract main content only
+            "waitFor": 2000,  # Wait for JS to load (ms)
         }
 
         for attempt in range(self.max_retries):
@@ -146,41 +148,46 @@ class FirecrawlClient:
                 if response.status_code == 200:
                     data = response.json()
                     return {
-                        'success': data.get('success', True),
-                        'markdown': data.get('data', {}).get('markdown', ''),
-                        'html': data.get('data', {}).get('html', ''),
-                        'metadata': data.get('data', {}).get('metadata', {}),
+                        "success": data.get("success", True),
+                        "markdown": data.get("data", {}).get("markdown", ""),
+                        "html": data.get("data", {}).get("html", ""),
+                        "metadata": data.get("data", {}).get("metadata", {}),
                     }
 
                 elif response.status_code == 429:
                     # Rate limited
-                    logger.warning(f"Firecrawl rate limited (429), attempt {attempt + 1}/{self.max_retries}")
+                    logger.warning(
+                        f"Firecrawl rate limited (429), attempt {attempt + 1}/{self.max_retries}"
+                    )
                     import time
-                    time.sleep(2 ** attempt)
+
+                    time.sleep(2**attempt)
                     continue
 
                 elif response.status_code == 402:
                     # Payment required / credits exhausted
                     logger.error("Firecrawl credits exhausted (402)")
-                    return {'success': False, 'error': 'Firecrawl credits exhausted'}
+                    return {"success": False, "error": "Firecrawl credits exhausted"}
 
                 elif response.status_code == 404:
-                    return {'success': False, 'error': f'Page not found (404): {url}'}
+                    return {"success": False, "error": f"Page not found (404): {url}"}
 
                 else:
                     error_text = response.text[:200]
                     logger.warning(f"Firecrawl API error {response.status_code}: {error_text}")
-                    return {'success': False, 'error': f'API error {response.status_code}'}
+                    return {"success": False, "error": f"API error {response.status_code}"}
 
             except requests.exceptions.Timeout:
-                logger.warning(f"Firecrawl timeout for {url}, attempt {attempt + 1}/{self.max_retries}")
+                logger.warning(
+                    f"Firecrawl timeout for {url}, attempt {attempt + 1}/{self.max_retries}"
+                )
                 continue
 
             except requests.exceptions.RequestException as e:
                 logger.warning(f"Firecrawl request error: {e}")
-                return {'success': False, 'error': str(e)}
+                return {"success": False, "error": str(e)}
 
-        return {'success': False, 'error': f'Max retries ({self.max_retries}) exceeded'}
+        return {"success": False, "error": f"Max retries ({self.max_retries}) exceeded"}
 
     def _fallback_scrape(self, url: str) -> Dict[str, Any]:
         """
@@ -199,10 +206,10 @@ class FirecrawlClient:
         try:
             # Simple requests-based scraping
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                              'AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
             }
 
             response = requests.get(url, headers=headers, timeout=15)
@@ -210,21 +217,21 @@ class FirecrawlClient:
             # Check HTTP status
             if response.status_code == 404:
                 return {
-                    'success': False,
-                    'error': f'Page not found (404): {url}',
-                    'content': '',
+                    "success": False,
+                    "error": f"Page not found (404): {url}",
+                    "content": "",
                 }
             if response.status_code == 403:
                 return {
-                    'success': False,
-                    'error': f'Access forbidden (403): {url}',
-                    'content': '',
+                    "success": False,
+                    "error": f"Access forbidden (403): {url}",
+                    "content": "",
                 }
             if response.status_code >= 400:
                 return {
-                    'success': False,
-                    'error': f'HTTP error {response.status_code}: {url}',
-                    'content': '',
+                    "success": False,
+                    "error": f"HTTP error {response.status_code}: {url}",
+                    "content": "",
                 }
 
             response.raise_for_status()
@@ -236,20 +243,33 @@ class FirecrawlClient:
                 # If BeautifulSoup not available, return raw text
                 content = response.text[:15000]
                 return {
-                    'success': True,
-                    'content': content,
-                    'url': url,
+                    "success": True,
+                    "content": content,
+                    "url": url,
                 }
 
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(response.text, "html.parser")
 
             # Remove non-content elements
-            for element in soup(['script', 'style', 'noscript', 'head', 'meta',
-                                 'link', 'svg', 'iframe', 'nav', 'footer', 'aside']):
+            for element in soup(
+                [
+                    "script",
+                    "style",
+                    "noscript",
+                    "head",
+                    "meta",
+                    "link",
+                    "svg",
+                    "iframe",
+                    "nav",
+                    "footer",
+                    "aside",
+                ]
+            ):
                 element.decompose()
 
             # Get text with proper whitespace
-            content = soup.get_text(separator=' ', strip=True)
+            content = soup.get_text(separator=" ", strip=True)
 
             # Truncate to reasonable length
             if len(content) > 15000:
@@ -258,33 +278,33 @@ class FirecrawlClient:
             logger.info(f"Fallback scraper extracted {len(content)} chars from: {url[:50]}...")
 
             return {
-                'success': True,
-                'content': content,
-                'url': url,
+                "success": True,
+                "content": content,
+                "url": url,
             }
 
         except requests.exceptions.Timeout:
             return {
-                'success': False,
-                'error': f'Request timeout: {url}',
-                'content': '',
+                "success": False,
+                "error": f"Request timeout: {url}",
+                "content": "",
             }
         except requests.exceptions.RequestException as e:
             return {
-                'success': False,
-                'error': str(e),
-                'content': '',
+                "success": False,
+                "error": str(e),
+                "content": "",
             }
         except Exception as e:
             return {
-                'success': False,
-                'error': str(e),
-                'content': '',
+                "success": False,
+                "error": str(e),
+                "content": "",
             }
 
     def close(self) -> None:
         """Close HTTP session."""
-        if hasattr(self, 'session'):
+        if hasattr(self, "session"):
             self.session.close()
 
     def __enter__(self):
@@ -295,6 +315,7 @@ class FirecrawlClient:
 
 
 # Convenience functions matching existing interface
+
 
 def scrape_page_with_firecrawl(url: str) -> Dict[str, Any]:
     """

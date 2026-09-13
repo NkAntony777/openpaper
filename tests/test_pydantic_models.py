@@ -19,21 +19,20 @@ import pytest
 # Ensure engine package is importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
+from pydantic import TypeAdapter, ValidationError
 from utils.models import (
     CitationDatabaseSchema,
-    CitationEntry,
     FactCheckClaim,
     FactCheckJudgeVerdict,
     LLMCitationResponse,
     ResearchPlan,
     strip_markdown_json,
 )
-from pydantic import TypeAdapter, ValidationError
-
 
 # ---------------------------------------------------------------------------
 # strip_markdown_json
 # ---------------------------------------------------------------------------
+
 
 class TestStripMarkdownJson:
     def test_raw_json(self):
@@ -52,6 +51,7 @@ class TestStripMarkdownJson:
 # ---------------------------------------------------------------------------
 # ResearchPlan
 # ---------------------------------------------------------------------------
+
 
 class TestResearchPlan:
     def test_valid_plan(self):
@@ -96,6 +96,7 @@ class TestResearchPlan:
 # LLMCitationResponse
 # ---------------------------------------------------------------------------
 
+
 class TestLLMCitationResponse:
     def test_valid_citation(self):
         data = {
@@ -114,6 +115,7 @@ class TestLLMCitationResponse:
     def test_year_coercion_from_string(self):
         """Pydantic should coerce '2023' -> 2023 via json.loads + model_validate."""
         import json
+
         raw = '{"authors": ["A"], "year": "2023", "title": "T"}'
         data = json.loads(raw)
         citation = LLMCitationResponse.model_validate(data)
@@ -162,6 +164,7 @@ class TestLLMCitationResponse:
 # CitationDatabaseSchema
 # ---------------------------------------------------------------------------
 
+
 class TestCitationDatabaseSchema:
     def test_valid_database(self):
         data = {
@@ -197,6 +200,7 @@ class TestCitationDatabaseSchema:
 # ---------------------------------------------------------------------------
 # FactCheckJudgeVerdict
 # ---------------------------------------------------------------------------
+
 
 class TestFactCheckJudgeVerdict:
     def test_valid_supported(self):
@@ -282,6 +286,7 @@ class TestFactCheckJudgeVerdict:
 # ---------------------------------------------------------------------------
 # FactCheckClaim
 # ---------------------------------------------------------------------------
+
 
 class TestFactCheckClaim:
     def test_valid_claim(self):

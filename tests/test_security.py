@@ -4,14 +4,11 @@ ABOUTME: Security unit tests for zero-coverage security-critical code paths
 ABOUTME: Covers SSRF protection, credential masking, input validation, output validation, backpressure
 """
 
-import sys
 import os
-import time
-
-import pytest
+import sys
 
 # Add engine directory to path so utils can be imported
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'engine'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "engine"))
 
 from utils.api_citations.base import (
     is_safe_url,
@@ -20,22 +17,22 @@ from utils.api_citations.base import (
     validate_author_name,
     validate_publication_year,
 )
+from utils.backpressure import (
+    PRESSURE_CONFIG,
+    APIType,
+    BackpressureManager,
+)
 from utils.output_validators import (
     OutputValidator,
     ScoutOutputValidator,
     ScribeOutputValidator,
     ValidationResult,
 )
-from utils.backpressure import (
-    BackpressureManager,
-    APIType,
-    PRESSURE_CONFIG,
-)
-
 
 # =========================================================================
 # SSRF Protection Tests — is_safe_url()
 # =========================================================================
+
 
 class TestSSRFProtection:
     """Tests for URL validation against SSRF attacks."""
@@ -154,6 +151,7 @@ class TestSSRFProtection:
 # Credential Masking Tests — mask_credentials()
 # =========================================================================
 
+
 class TestCredentialMasking:
     """Tests for credential masking in proxy URLs."""
 
@@ -182,6 +180,7 @@ class TestCredentialMasking:
 # =========================================================================
 # Proxy Parsing Tests — parse_proxy()
 # =========================================================================
+
 
 class TestProxyParsing:
     """Tests for proxy string parsing."""
@@ -212,6 +211,7 @@ class TestProxyParsing:
 # =========================================================================
 # Author Name Validation Tests — validate_author_name()
 # =========================================================================
+
 
 class TestAuthorNameValidation:
     """Tests for author name validation (prevents metadata pollution)."""
@@ -280,6 +280,7 @@ class TestAuthorNameValidation:
 # Publication Year Validation Tests — validate_publication_year()
 # =========================================================================
 
+
 class TestPublicationYearValidation:
     """Tests for publication year validation."""
 
@@ -315,6 +316,7 @@ class TestPublicationYearValidation:
     def test_current_year_is_recent(self):
         """Current year should be flagged as recent (possible preprint)."""
         import datetime
+
         current = datetime.datetime.now().year
         is_valid, reason, is_recent = validate_publication_year(current)
         assert is_valid is True
@@ -323,6 +325,7 @@ class TestPublicationYearValidation:
     def test_last_year_not_recent(self):
         """Last year should not be flagged as recent."""
         import datetime
+
         last_year = datetime.datetime.now().year - 1
         is_valid, reason, is_recent = validate_publication_year(last_year)
         assert is_valid is True
@@ -332,6 +335,7 @@ class TestPublicationYearValidation:
 # =========================================================================
 # Output Validator Tests — OutputValidator
 # =========================================================================
+
 
 class TestOutputValidatorJSON:
     """Tests for JSON validation in OutputValidator."""
@@ -343,13 +347,13 @@ class TestOutputValidatorJSON:
 
     def test_invalid_json_rejected(self):
         """Malformed JSON should be rejected."""
-        result = OutputValidator.validate_json('{not valid json}')
+        result = OutputValidator.validate_json("{not valid json}")
         assert result.is_valid is False
         assert "Invalid JSON" in result.error_message
 
     def test_empty_json_rejected(self):
         """Empty JSON object/array should be rejected."""
-        result = OutputValidator.validate_json('{}')
+        result = OutputValidator.validate_json("{}")
         assert result.is_valid is False
         assert "empty" in result.error_message.lower()
 
@@ -466,6 +470,7 @@ class TestValidationResultBool:
 # Specialized Validator Tests
 # =========================================================================
 
+
 class TestScoutOutputValidator:
     """Tests for Scout Agent output validation."""
 
@@ -473,12 +478,12 @@ class TestScoutOutputValidator:
         """Valid Scout JSON output should pass."""
         # Build a JSON string that is valid, non-repetitive, and >= 1000 chars
         entries = [
-            f'{{"id": {i}, "title": "Research Paper on Topic {i} in Field {i*3}", '
+            f'{{"id": {i}, "title": "Research Paper on Topic {i} in Field {i * 3}", '
             f'"abstract": "This abstract discusses the findings of study number {i} '
-            f'with unique methodology and novel results in domain area {i*7}."}}'
+            f'with unique methodology and novel results in domain area {i * 7}."}}'
             for i in range(30)
         ]
-        data = '{"results": [' + ','.join(entries) + ']}'
+        data = '{"results": [' + ",".join(entries) + "]}"
         assert len(data) >= 1000
         result = ScoutOutputValidator.validate(data)
         assert result.is_valid is True
@@ -506,7 +511,12 @@ class TestScribeOutputValidator:
 
     def test_scribe_repetition_rejected(self):
         """Scribe output with hallucination loops should be rejected."""
-        text = " ".join([f"word{i}" for i in range(4000)]) + " " + "hallucinate " * 20 + " ".join([f"end{i}" for i in range(1000)])
+        text = (
+            " ".join([f"word{i}" for i in range(4000)])
+            + " "
+            + "hallucinate " * 20
+            + " ".join([f"end{i}" for i in range(1000)])
+        )
         result = ScribeOutputValidator.validate(text)
         assert result.is_valid is False
 
@@ -514,6 +524,7 @@ class TestScribeOutputValidator:
 # =========================================================================
 # Backpressure Manager Tests
 # =========================================================================
+
 
 class TestBackpressureManager:
     """Tests for rate limit backpressure coordination."""

@@ -49,9 +49,7 @@ class ConcurrencyConfig:
     crafter_parallel: bool = field(default=None)
 
     # Scout (citation research) settings
-    scout_batch_size: int = field(
-        default_factory=lambda: int(os.getenv("SCOUT_BATCH_SIZE", "10"))
-    )
+    scout_batch_size: int = field(default_factory=lambda: int(os.getenv("SCOUT_BATCH_SIZE", "10")))
     scout_batch_delay: float = field(
         default_factory=lambda: float(os.getenv("SCOUT_BATCH_DELAY", "1.0"))
     )
@@ -77,6 +75,7 @@ class ConcurrencyConfig:
                 if api_key:
                     try:
                         from utils.api_tier_detector import detect_api_tier
+
                         self.tier = detect_api_tier(verbose=False)
                     except Exception:
                         self.tier = "free"  # Default to free tier on detection failure
@@ -123,8 +122,10 @@ def get_concurrency_config(verbose: bool = False) -> ConcurrencyConfig:
     if _config is None:
         _config = ConcurrencyConfig()
         if verbose:
-            print(f"⚙️  Concurrency config: tier={_config.tier}, {_config.scout_parallel_workers} workers, "
-                  f"{_config.scout_batch_size} batch size, {_config.rate_limit_delay}s delay")
+            print(
+                f"⚙️  Concurrency config: tier={_config.tier}, {_config.scout_parallel_workers} workers, "
+                f"{_config.scout_batch_size} batch size, {_config.rate_limit_delay}s delay"
+            )
     return _config
 
 

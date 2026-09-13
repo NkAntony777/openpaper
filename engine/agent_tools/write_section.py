@@ -20,7 +20,7 @@ from agent_tools.common import (
     update_section_status,
     word_target_max,
 )
-from agent_tools.envelope import ok, fail, ToolInputError, resolve_under_root
+from agent_tools.envelope import ToolInputError, fail, ok, resolve_under_root
 
 CITE_REF_RE = re.compile(r"\{cite_(\d+)\}")
 CITE_MISSING_RE = re.compile(r"\{cite_MISSING[^}]*\}", re.IGNORECASE)
@@ -66,19 +66,19 @@ INPUT_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
             "description": "cite_XXX ids cited in this section. Each must exist in "
-                           "research/bibliography.json (checked against the file, not just this list).",
+            "research/bibliography.json (checked against the file, not just this list).",
         },
         "slug": {
             "type": "string",
             "description": "Required for section='custom': filename slug, e.g. 'related_work'. "
-                           "Writes to drafts/custom_sections/custom_<slug>.md.",
+            "Writes to drafts/custom_sections/custom_<slug>.md.",
         },
         "summary": {
             "type": "string",
             "description": "One or two sentences summarizing this section's core claims, key "
-                           "terminology and main cited ids — the global review pass "
-                           "(harness review) reads these summaries, so always provide one. "
-                           "Max 600 characters (truncated beyond that).",
+            "terminology and main cited ids — the global review pass "
+            "(harness review) reads these summaries, so always provide one. "
+            "Max 600 characters (truncated beyond that).",
         },
     },
     "required": ["section", "content"],
@@ -91,13 +91,13 @@ def _section_target_rel(args: Dict) -> Tuple[str, str]:
     if section == "custom":
         slug = args.get("slug")
         if not slug or not re.fullmatch(r"[a-z0-9_\-]{2,60}", slug):
-            raise ToolInputError(
-                "section='custom' requires a slug matching [a-z0-9_-]{2,60}"
-            )
+            raise ToolInputError("section='custom' requires a slug matching [a-z0-9_-]{2,60}")
         # NN = next free index among existing custom sections
         return f"{CUSTOM_SECTIONS_DIR}/custom_{slug}.md", "custom"
     if section not in SECTION_FILES:
-        raise ToolInputError(f"unknown section: {section} (valid: {sorted(SECTION_FILES) + ['custom']})")
+        raise ToolInputError(
+            f"unknown section: {section} (valid: {sorted(SECTION_FILES) + ['custom']})"
+        )
     return SECTION_FILES[section]["file"], section
 
 
@@ -107,7 +107,9 @@ def _check_guardrails(content: str, root: Path, section: str) -> Optional[Dict]:
         if pattern.search(content):
             return fail(
                 f"guardrail: content contains {label}; finish the section for real",
-                is_retryable=False, guardrail="placeholder", placeholder=label,
+                is_retryable=False,
+                guardrail="placeholder",
+                placeholder=label,
             )
 
     bib_ids = bibliography_ids(root)
@@ -117,7 +119,9 @@ def _check_guardrails(content: str, root: Path, section: str) -> Optional[Dict]:
         return fail(
             f"guardrail: citations not in research/bibliography.json: {unknown}. "
             f"Run search_literature first, then cite the returned ids.",
-            is_retryable=False, guardrail="unknown_citations", unknown_citations=unknown,
+            is_retryable=False,
+            guardrail="unknown_citations",
+            unknown_citations=unknown,
         )
 
     target = word_target_max(root, SECTION_FILES.get(section, {}).get("wt_key", ""))
@@ -128,8 +132,11 @@ def _check_guardrails(content: str, root: Path, section: str) -> Optional[Dict]:
             return fail(
                 f"guardrail: section too short: {words} words (floor: {floor}, target: {target}). "
                 f"Expand the section before writing.",
-                is_retryable=False, guardrail="min_words",
-                actual_words=words, floor_words=floor, target_words=target,
+                is_retryable=False,
+                guardrail="min_words",
+                actual_words=words,
+                floor_words=floor,
+                target_words=target,
             )
     return None
 
@@ -159,14 +166,21 @@ def run(args: Dict, root: Path) -> Dict:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
 
-    sync = sync_checkpoint_section(root, section, content) if section != "custom" else {
-        "checkpoint": "skipped", "body": False,
-    }
+    sync = (
+        sync_checkpoint_section(root, section, content)
+        if section != "custom"
+        else {
+            "checkpoint": "skipped",
+            "body": False,
+        }
+    )
 
     refs = sorted({f"cite_{n}" for n in CITE_REF_RE.findall(content)})
     warnings: List[str] = []
     if CITE_MISSING_RE.search(content):
-        warnings.append("content contains {cite_MISSING:...}; compile_draft will try to research real replacements")
+        warnings.append(
+            "content contains {cite_MISSING:...}; compile_draft will try to research real replacements"
+        )
     declared_raw = args.get("citations_used")
     if declared_raw is not None:
         declared = {str(c) for c in declared_raw}
@@ -182,7 +196,9 @@ def run(args: Dict, root: Path) -> Dict:
             if len(summary_text) > SUMMARY_MAX_CHARS:
                 summary_text = summary_text[:SUMMARY_MAX_CHARS]
                 warnings.append(f"summary truncated to {SUMMARY_MAX_CHARS} characters")
-            summary_written = _summary_ledger_rel(section, args.get("slug") if section == "custom" else None)
+            summary_written = _summary_ledger_rel(
+                section, args.get("slug") if section == "custom" else None
+            )
             ledger_path = Path(root) / summary_written
             ledger_path.parent.mkdir(parents=True, exist_ok=True)
             ledger_path.write_text(summary_text, encoding="utf-8")
@@ -192,29 +208,34 @@ def run(args: Dict, root: Path) -> Dict:
     status_ledger = None
     if section != "custom":
         status_ledger = update_section_status(
-            root, section,
+            root,
+            section,
             status="written",
             words=len(content.split()),
             citations_count=len(refs),
             updated_at=datetime.now().isoformat(timespec="seconds"),
         )
 
-    return ok({
-        "section": section,
-        "path": rel_path,
-        "words": len(content.split()),
-        "citations": refs,
-        "warnings": warnings,
-        "snapshot": snapshot,
-        "summary_ledger": summary_written,
-        "status_ledger": status_ledger,
-        **sync,
-    })
+    return ok(
+        {
+            "section": section,
+            "path": rel_path,
+            "words": len(content.split()),
+            "citations": refs,
+            "warnings": warnings,
+            "snapshot": snapshot,
+            "summary_ledger": summary_written,
+            "status_ledger": status_ledger,
+            **sync,
+        }
+    )
 
 
-registry.register(registry.ToolSpec(
-    name="write_section",
-    description=DESCRIPTION,
-    input_schema=INPUT_SCHEMA,
-    func=run,
-))
+registry.register(
+    registry.ToolSpec(
+        name="write_section",
+        description=DESCRIPTION,
+        input_schema=INPUT_SCHEMA,
+        func=run,
+    )
+)

@@ -8,7 +8,6 @@ ABOUTME: their digests are rendered as bounded blocks (truncation keeps the map 
 """
 
 import json
-import re
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -65,12 +64,14 @@ def _section_rows(root: Path) -> List[Dict]:
     rows = []
     for name, meta in SECTION_FILES.items():
         text = _read(root, meta["file"])
-        rows.append({
-            "section": name,
-            "file": meta["file"],
-            "words": _word_count(text),
-            "status": "written" if text.strip() else "pending",
-        })
+        rows.append(
+            {
+                "section": name,
+                "file": meta["file"],
+                "words": _word_count(text),
+                "status": "written" if text.strip() else "pending",
+            }
+        )
     return rows
 
 
@@ -119,9 +120,10 @@ def _summaries_block(root: Path) -> List[str]:
         lines.append("(none yet — write_section's `summary` argument fills this)")
         return lines
     for p in files:
-        name = p.name[:-len(".summary.md")] if p.name.endswith(".summary.md") else p.stem
-        first_line = next((ln.strip() for ln in p.read_text(encoding="utf-8").splitlines()
-                           if ln.strip()), "")
+        name = p.name[: -len(".summary.md")] if p.name.endswith(".summary.md") else p.stem
+        first_line = next(
+            (ln.strip() for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()), ""
+        )
         lines.append(f"- {name}: {first_line[:SUMMARY_SNIPPET_MAX_CHARS]}")
     return lines
 
@@ -241,8 +243,10 @@ def generate_paper_map(root: Path) -> str:
     lines.append("")
     lines.append(f"- Level: {level} · Citation style: {style} · Language: {lang}")
     lines.append(f"- Pipeline progress: {completed}")
-    lines.append(f"- Citations in database: {bib['count']}"
-                 + (f" (years {bib['years']})" if bib['years'] else ""))
+    lines.append(
+        f"- Citations in database: {bib['count']}"
+        + (f" (years {bib['years']})" if bib["years"] else "")
+    )
     lines.append("")
 
     lines.append("## Outline")
@@ -278,7 +282,9 @@ def generate_paper_map(root: Path) -> str:
         lines.append("|---|---|---|---|---|")
         for row in rows:
             target = str(word_targets.get(row["section"], "?"))
-            lines.append(f"| {row['section']} | {row['file']} | {target} | {row['words']} | {row['status']} |")
+            lines.append(
+                f"| {row['section']} | {row['file']} | {target} | {row['words']} | {row['status']} |"
+            )
     lines.append("")
     lines.extend(_lessons_block(root))
     lines.append("")
@@ -289,35 +295,52 @@ def generate_paper_map(root: Path) -> str:
 
     lines.append("## Writing discipline")
     lines.append("")
-    lines.append("- Cite ONLY `cite_XXX` ids present in `research/bibliography.json`. "
-                 "Need a new source? Call `search_literature` first and cite the ids it returns. "
-                 "Never invent citations.")
-    lines.append("- `write_section` enforces this: unknown cite ids, TODO/[INSERT]/[expand] "
-                 "placeholders, or far-too-short sections are rejected — fix and rewrite.")
-    lines.append("- After each `write_section`, run `score_draft` (scope=section), read the "
-                 "issues, and fix them (revise_section for wording, search_literature for thin "
-                 "evidence) before moving on.")
-    lines.append("- Record hard factual claims with `manage_claims` (action=record), verify "
-                 "them, and feed CONTRADICTED `find_replace` pairs into `revise_section`. Then "
-                 "`manage_claims` action=resolve so the finish gate can see they were handled.")
-    lines.append("- Ground every paragraph in the research material: read the relevant "
-                 "`research/papers/*.md` notes before writing, don't write from memory.")
+    lines.append(
+        "- Cite ONLY `cite_XXX` ids present in `research/bibliography.json`. "
+        "Need a new source? Call `search_literature` first and cite the ids it returns. "
+        "Never invent citations."
+    )
+    lines.append(
+        "- `write_section` enforces this: unknown cite ids, TODO/[INSERT]/[expand] "
+        "placeholders, or far-too-short sections are rejected — fix and rewrite."
+    )
+    lines.append(
+        "- After each `write_section`, run `score_draft` (scope=section), read the "
+        "issues, and fix them (revise_section for wording, search_literature for thin "
+        "evidence) before moving on."
+    )
+    lines.append(
+        "- Record hard factual claims with `manage_claims` (action=record), verify "
+        "them, and feed CONTRADICTED `find_replace` pairs into `revise_section`. Then "
+        "`manage_claims` action=resolve so the finish gate can see they were handled."
+    )
+    lines.append(
+        "- Ground every paragraph in the research material: read the relevant "
+        "`research/papers/*.md` notes before writing, don't write from memory."
+    )
     forbidden = _forbidden_from_ckpt(ckpt)
     if forbidden:
-        lines.append("- FORBIDDEN claims (must NOT appear anywhere; the finish gate scans "
-                     "for them):")
+        lines.append(
+            "- FORBIDDEN claims (must NOT appear anywhere; the finish gate scans for them):"
+        )
         for c in forbidden:
             lines.append(f"  - {c}")
     lines.append("")
 
     lines.append("## Material")
     lines.append("")
-    lines.append("- Research notes: `research/papers/*.md`, `research/combined_research.md`, "
-                 "`research/research_gaps.md`")
-    lines.append(f"- Citation ledger: `{BIBLIOGRAPHY_REL}` + `drafts/citation_summary.md` "
-                 f"({bib['count']} entries)")
-    lines.append("- Claims ledger: `drafts/.ledger/*.claims.jsonl` — key factual claims per "
-                 "section, recorded/verified via `manage_claims`")
+    lines.append(
+        "- Research notes: `research/papers/*.md`, `research/combined_research.md`, "
+        "`research/research_gaps.md`"
+    )
+    lines.append(
+        f"- Citation ledger: `{BIBLIOGRAPHY_REL}` + `drafts/citation_summary.md` "
+        f"({bib['count']} entries)"
+    )
+    lines.append(
+        "- Claims ledger: `drafts/.ledger/*.claims.jsonl` — key factual claims per "
+        "section, recorded/verified via `manage_claims`"
+    )
     lines.append("- Gaps & trends: `research/research_gaps.md`")
     lines.append("")
 

@@ -7,7 +7,7 @@ ABOUTME: Defines the strategy pattern interface for all PDF engines
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
 
 @dataclass
@@ -17,6 +17,7 @@ class PDFGenerationOptions:
 
     Provides type-safe academic formatting standards with sensible defaults.
     """
+
     # Page layout
     margins: str = "1in"
     page_size: str = "Letter"
@@ -63,9 +64,9 @@ class PDFGenerationOptions:
         """Set default heading styles if not provided."""
         if self.heading_styles is None:
             self.heading_styles = {
-                'h1': {'align': 'center', 'bold': True, 'size': '14pt'},
-                'h2': {'align': 'left', 'bold': True, 'size': '13pt'},
-                'h3': {'align': 'left', 'italic': True, 'bold': False, 'size': '12pt'},
+                "h1": {"align": "center", "bold": True, "size": "14pt"},
+                "h2": {"align": "left", "bold": True, "size": "13pt"},
+                "h3": {"align": "left", "italic": True, "bold": False, "size": "12pt"},
             }
 
 
@@ -76,6 +77,7 @@ class EngineResult:
 
     Provides detailed feedback for error handling and fallback logic.
     """
+
     success: bool
     engine_name: str
     output_path: Optional[Path] = None
@@ -139,10 +141,7 @@ class PDFEngine(ABC):
 
     @abstractmethod
     def generate(
-        self,
-        md_file: Path,
-        output_pdf: Path,
-        options: PDFGenerationOptions
+        self, md_file: Path, output_pdf: Path, options: PDFGenerationOptions
     ) -> EngineResult:
         """
         Generate a PDF from markdown source.
@@ -171,10 +170,10 @@ class PDFEngine(ABC):
         if not md_file.exists():
             return f"Input file not found: {md_file}"
 
-        if not md_file.suffix.lower() in ['.md', '.markdown']:
+        if md_file.suffix.lower() not in [".md", ".markdown"]:
             return f"Input file must be markdown (.md), got: {md_file.suffix}"
 
-        if output_pdf.suffix.lower() != '.pdf':
+        if output_pdf.suffix.lower() != ".pdf":
             return f"Output file must have .pdf extension, got: {output_pdf.suffix}"
 
         # Ensure output directory exists

@@ -21,10 +21,9 @@ Features:
 
 import logging
 import logging.handlers
+import sys
 from pathlib import Path
 from typing import Optional
-import sys
-
 
 # Log directory (created if doesn't exist)
 LOG_DIR = Path("logs")
@@ -44,12 +43,12 @@ _cli_mode_enabled = False
 
 # ANSI color codes for terminal output
 COLORS = {
-    'DEBUG': '\033[36m',      # Cyan
-    'INFO': '\033[32m',       # Green
-    'WARNING': '\033[33m',    # Yellow
-    'ERROR': '\033[31m',      # Red
-    'CRITICAL': '\033[35m',   # Magenta
-    'RESET': '\033[0m'        # Reset
+    "DEBUG": "\033[36m",  # Cyan
+    "INFO": "\033[32m",  # Green
+    "WARNING": "\033[33m",  # Yellow
+    "ERROR": "\033[31m",  # Red
+    "CRITICAL": "\033[35m",  # Magenta
+    "RESET": "\033[0m",  # Reset
 }
 
 
@@ -87,42 +86,42 @@ class CLIFormatter(logging.Formatter):
     # Messages to suppress entirely (too technical for CLI users)
     # These are exact substring matches
     SUPPRESS_SUBSTRINGS = [
-        '[MEMORY]',           # Memory tracking
-        '[SETUP]',            # Setup messages
-        'Validation skipped', # Internal validation state
-        'Validation:',        # Validation status
-        'File size:',         # File size logs
-        'Target:',            # Target word count logs
-        'Output:',            # Output path logs (we show final paths)
-        'Output directory:',  # Output directory logs
-        'Process PID:',       # Process ID
-        'Python:',            # Python version
-        'Tracker:',           # Tracker status
-        'Streamer:',          # Streamer status
-        'Topic:',             # Topic echo (already shown in banner)
-        'Language:',          # Language echo
-        'Academic Level:',    # Level echo
-        'Author:',            # Author echo
-        'Institution:',       # Institution echo
-        'AUTOMATED WORKFLOW', # Technical header
-        'Created folders:',   # Folder creation details
-        'Saved to:',          # File save paths
-        'Paragraph-truncated',# Internal truncation logs
-        'DRAFT GENERATION',   # Draft generation headers
-        'Model initialized',  # Model init messages
-        'Crossref:',          # Individual citation finds
-        'SemanticScholar:',   # Individual citation finds
-        'Gemini grounded',    # Gemini grounding messages
-        'retry attempts failed',  # API retries (normal with fallbacks)
-        'API unavailable after',  # API unavailable (normal with fallbacks)
+        "[MEMORY]",  # Memory tracking
+        "[SETUP]",  # Setup messages
+        "Validation skipped",  # Internal validation state
+        "Validation:",  # Validation status
+        "File size:",  # File size logs
+        "Target:",  # Target word count logs
+        "Output:",  # Output path logs (we show final paths)
+        "Output directory:",  # Output directory logs
+        "Process PID:",  # Process ID
+        "Python:",  # Python version
+        "Tracker:",  # Tracker status
+        "Streamer:",  # Streamer status
+        "Topic:",  # Topic echo (already shown in banner)
+        "Language:",  # Language echo
+        "Academic Level:",  # Level echo
+        "Author:",  # Author echo
+        "Institution:",  # Institution echo
+        "AUTOMATED WORKFLOW",  # Technical header
+        "Created folders:",  # Folder creation details
+        "Saved to:",  # File save paths
+        "Paragraph-truncated",  # Internal truncation logs
+        "DRAFT GENERATION",  # Draft generation headers
+        "Model initialized",  # Model init messages
+        "Crossref:",  # Individual citation finds
+        "SemanticScholar:",  # Individual citation finds
+        "Gemini grounded",  # Gemini grounding messages
+        "retry attempts failed",  # API retries (normal with fallbacks)
+        "API unavailable after",  # API unavailable (normal with fallbacks)
     ]
 
     # Regex patterns to suppress
     SUPPRESS_REGEX = [
-        r'^=+$',              # Divider lines of just =
-        r'^-+$',              # Divider lines of just -
-        r'Loaded \d+ cached', # Cache loading messages
-        r'Loaded \d+ prox',   # Proxy loading
+        r"^=+$",  # Divider lines of just =
+        r"^-+$",  # Divider lines of just -
+        r"Loaded \d+ cached",  # Cache loading messages
+        r"Loaded \d+ prox",  # Proxy loading
     ]
 
     # Transform patterns: (pattern, replacement)
@@ -180,22 +179,20 @@ class CLIFormatter(logging.Formatter):
 
         # For WARNING level, add yellow indicator (but skip rate limit spam)
         if record.levelno >= logging.WARNING:
-            if 'rate limit' in msg.lower():
+            if "rate limit" in msg.lower():
                 return ""  # Suppress rate limit warnings
             return f"  ⚠️  {msg}"
 
         # Default: show message with indent (for user-friendly messages from print())
         # But suppress very technical messages
-        if any(x in msg for x in ['logger', 'DEBUG', 'bytes']):
+        if any(x in msg for x in ["logger", "DEBUG", "bytes"]):
             return ""
 
         return f"  {msg}"
 
 
 def setup_logging(
-    level: int = logging.INFO,
-    console_output: bool = True,
-    file_output: bool = True
+    level: int = logging.INFO, console_output: bool = True, file_output: bool = True
 ) -> None:
     """
     Configure root logger with console and file handlers.
@@ -234,7 +231,7 @@ def setup_logging(
             MAIN_LOG_FILE,
             maxBytes=10 * 1024 * 1024,  # 10MB
             backupCount=5,
-            encoding='utf-8'
+            encoding="utf-8",
         )
         file_handler.setLevel(logging.DEBUG)
         file_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
@@ -246,7 +243,7 @@ def setup_logging(
             ERROR_LOG_FILE,
             maxBytes=10 * 1024 * 1024,  # 10MB
             backupCount=5,
-            encoding='utf-8'
+            encoding="utf-8",
         )
         error_handler.setLevel(logging.ERROR)
         error_handler.setFormatter(file_formatter)
@@ -282,11 +279,7 @@ def get_logger(name: str, level: Optional[int] = None) -> logging.Logger:
 
 
 # Initialize logging on module import (can be reconfigured later)
-setup_logging(
-    level=logging.INFO,
-    console_output=True,
-    file_output=True
-)
+setup_logging(level=logging.INFO, console_output=True, file_output=True)
 
 
 class CLIFilter(logging.Filter):
@@ -304,6 +297,7 @@ class CLIFilter(logging.Filter):
                 return False
 
         import re
+
         for pattern in CLIFormatter.SUPPRESS_REGEX:
             if re.search(pattern, msg):
                 return False
@@ -374,7 +368,7 @@ def disable_cli_mode() -> None:
 # USAGE EXAMPLES
 # ============================================================================
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     """Test logging configuration with sample messages."""
 
     print("Testing logging configuration...\n")
@@ -392,19 +386,15 @@ if __name__ == '__main__':
     # Test structured logging
     logger.info(
         "Citation scraped successfully",
-        extra={
-            'citation_id': 'cite_042',
-            'source': 'Crossref',
-            'title': 'Example Paper'
-        }
+        extra={"citation_id": "cite_042", "source": "Crossref", "title": "Example Paper"},
     )
 
     # Test exception logging
     try:
         raise ValueError("Simulated error for testing")
-    except Exception as e:
+    except Exception:
         logger.error("Exception occurred during test", exc_info=True)
 
-    print(f"\n✅ Logs written to:")
+    print("\n✅ Logs written to:")
     print(f"   Main log: {MAIN_LOG_FILE}")
     print(f"   Error log: {ERROR_LOG_FILE}")

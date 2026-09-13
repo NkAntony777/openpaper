@@ -6,8 +6,8 @@ ABOUTME: Tests claim extraction, evidence search, judge verdicts, and end-to-end
 
 import json
 import os
-import sys
 import socket
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,17 +16,17 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
 from utils.factcheck_verifier import (
-    FactCheckVerifier,
-    VERDICT_SUPPORTED,
     VERDICT_CONTRADICTED,
     VERDICT_INSUFFICIENT,
+    VERDICT_SUPPORTED,
+    FactCheckVerifier,
     strip_json_fences,
 )
-
 
 # =========================================================================
 # Helpers
 # =========================================================================
+
 
 def require_api_key():
     """Skip test if no Google API key is available."""
@@ -99,6 +99,7 @@ training approaches in the future.
 # Test: Claim Extraction
 # =========================================================================
 
+
 @pytest.mark.integration
 def test_claim_extraction():
     """
@@ -108,7 +109,7 @@ def test_claim_extraction():
     require_api_key()
     require_network_access()
 
-    from utils.agent_runner import setup_model, run_agent
+    from utils.llm_runtime import run_agent, setup_model
 
     model = setup_model()
 
@@ -145,25 +146,30 @@ def test_claim_extraction():
     claim_texts = [c["claim"].lower() for c in claims]
 
     # These factual claims should be extracted
-    assert any("2022" in c or "gpt-4" in c.lower() for c in claim_texts), \
+    assert any("2022" in c or "gpt-4" in c.lower() for c in claim_texts), (
         f"Expected GPT-4/2022 claim to be extracted. Got: {claim_texts}"
+    )
 
-    assert any("guido" in c or "python" in c for c in claim_texts), \
+    assert any("guido" in c or "python" in c for c in claim_texts), (
         f"Expected Python/Guido claim to be extracted. Got: {claim_texts}"
+    )
 
     # Opinions and hedged language should NOT be extracted
     # "promising results" and "may benefit" are opinions/hedged
     for claim in claims:
         ct = claim["claim"].lower()
-        assert "promising results" not in ct, \
+        assert "promising results" not in ct, (
             f"Opinion 'promising results' should not be extracted: {ct}"
-        assert "may benefit" not in ct, \
+        )
+        assert "may benefit" not in ct, (
             f"Hedged language 'may benefit' should not be extracted: {ct}"
+        )
 
 
 # =========================================================================
 # Test: Evidence Search
 # =========================================================================
+
 
 @pytest.mark.integration
 def test_evidence_search():
@@ -173,7 +179,8 @@ def test_evidence_search():
     api_key = require_api_key()
     require_network_access()
 
-    from utils.agent_runner import setup_model
+    from utils.llm_runtime import setup_model
+
     model = setup_model()
 
     verifier = FactCheckVerifier(api_key=api_key, model=model)
@@ -203,6 +210,7 @@ def test_evidence_search():
 # Test: Judge
 # =========================================================================
 
+
 @pytest.mark.integration
 def test_judge():
     """
@@ -211,7 +219,8 @@ def test_judge():
     api_key = require_api_key()
     require_network_access()
 
-    from utils.agent_runner import setup_model
+    from utils.llm_runtime import setup_model
+
     model = setup_model()
 
     verifier = FactCheckVerifier(api_key=api_key, model=model)
@@ -235,12 +244,14 @@ def test_judge():
         if is_network_error(e):
             pytest.skip(f"Network unavailable during judge call: {e}")
         raise
-    assert verdict_false["verdict"] == VERDICT_CONTRADICTED, \
+    assert verdict_false["verdict"] == VERDICT_CONTRADICTED, (
         f"Expected CONTRADICTED for false claim, got: {verdict_false['verdict']}"
+    )
     # wrong_part should be set and be a substring of the claim
     if verdict_false.get("wrong_part"):
-        assert verdict_false["wrong_part"] in false_claim["claim"], \
+        assert verdict_false["wrong_part"] in false_claim["claim"], (
             f"wrong_part '{verdict_false['wrong_part']}' not found in claim"
+        )
 
     # --- Case 2: True claim with supporting evidence ---
     true_claim = {
@@ -261,8 +272,9 @@ def test_judge():
         if is_network_error(e):
             pytest.skip(f"Network unavailable during judge call: {e}")
         raise
-    assert verdict_true["verdict"] == VERDICT_SUPPORTED, \
+    assert verdict_true["verdict"] == VERDICT_SUPPORTED, (
         f"Expected SUPPORTED for true claim, got: {verdict_true['verdict']}"
+    )
 
     # --- Case 3: Claim with empty evidence → INSUFFICIENT ---
     unknown_claim = {
@@ -276,13 +288,15 @@ def test_judge():
         if is_network_error(e):
             pytest.skip(f"Network unavailable during judge call: {e}")
         raise
-    assert verdict_unknown["verdict"] == VERDICT_INSUFFICIENT, \
+    assert verdict_unknown["verdict"] == VERDICT_INSUFFICIENT, (
         f"Expected INSUFFICIENT for empty evidence, got: {verdict_unknown['verdict']}"
+    )
 
 
 # =========================================================================
 # Test: End-to-End Pipeline
 # =========================================================================
+
 
 @pytest.mark.integration
 def test_end_to_end():
@@ -292,7 +306,7 @@ def test_end_to_end():
     api_key = require_api_key()
     require_network_access()
 
-    from utils.agent_runner import setup_model, run_agent
+    from utils.llm_runtime import run_agent, setup_model
 
     model = setup_model()
 
@@ -334,17 +348,19 @@ def test_end_to_end():
     # At least one of our deliberately false claims should be caught
     # (GPT-4 released in 2022, or $900 billion market in 2020)
     has_contradicted = any(r["verdict"] == VERDICT_CONTRADICTED for r in results)
-    assert has_contradicted, \
-        f"Expected at least 1 CONTRADICTED verdict for deliberately false claims. " \
+    assert has_contradicted, (
+        f"Expected at least 1 CONTRADICTED verdict for deliberately false claims. "
         f"Verdicts: {[r['verdict'] for r in results]}"
+    )
 
-    assert "ISSUES FOUND" in report, "Report should have ISSUES FOUND section when contradictions exist"
+    assert "ISSUES FOUND" in report, (
+        "Report should have ISSUES FOUND section when contradictions exist"
+    )
 
     # Check that find/replace is present for at least one contradiction
     contradicted_results = [r for r in results if r["verdict"] == VERDICT_CONTRADICTED]
     has_find_replace = any(
-        r.get("wrong_part") and r.get("correct_value")
-        for r in contradicted_results
+        r.get("wrong_part") and r.get("correct_value") for r in contradicted_results
     )
     # Find/replace is expected but not strictly required (depends on LLM quality)
     if has_find_replace:
@@ -354,8 +370,10 @@ def test_end_to_end():
     for r in results:
         claim_lower = r["claim"].lower()
         if "guido van rossum" in claim_lower or "1991" in claim_lower:
-            assert r["verdict"] != VERDICT_CONTRADICTED, \
+            assert r["verdict"] != VERDICT_CONTRADICTED, (
                 f"True claim about Python should not be CONTRADICTED: {r['claim']}"
+            )
         if "attention is all you need" in claim_lower or "vaswani" in claim_lower:
-            assert r["verdict"] != VERDICT_CONTRADICTED, \
+            assert r["verdict"] != VERDICT_CONTRADICTED, (
                 f"True claim about Transformers should not be CONTRADICTED: {r['claim']}"
+            )

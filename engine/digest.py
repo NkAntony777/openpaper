@@ -9,11 +9,11 @@ Usage:
     python -m engine.digest paper.pdf --no-audio
 """
 
+import argparse
+import logging
 import os
 import re
 import sys
-import argparse
-import logging
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +21,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import get_config
-from utils.document_reader import read_document, get_document_info
+from utils.document_reader import get_document_info, read_document
 from utils.gemini_client import GeminiModelWrapper
 from utils.openai_client import OpenAIModelWrapper
 
@@ -64,7 +64,9 @@ def generate_script(
         try:
             from google import genai
         except ImportError:
-            raise ImportError("google-genai required. Install with: pip install google-genai")
+            raise ImportError(
+                "google-genai required. Install with: pip install google-genai"
+            ) from None
 
         api_key = config.google_api_key or os.environ.get("GOOGLE_API_KEY")
         if not api_key:
@@ -103,21 +105,21 @@ Generate a 150-180 word narration script. Output ONLY the script text, nothing e
 def _clean_script(script: str) -> str:
     """Clean script for TTS."""
     # Remove markdown formatting
-    script = re.sub(r'\*\*([^*]+)\*\*', r'\1', script)  # bold
-    script = re.sub(r'\*([^*]+)\*', r'\1', script)  # italic
-    script = re.sub(r'`([^`]+)`', r'\1', script)  # code
+    script = re.sub(r"\*\*([^*]+)\*\*", r"\1", script)  # bold
+    script = re.sub(r"\*([^*]+)\*", r"\1", script)  # italic
+    script = re.sub(r"`([^`]+)`", r"\1", script)  # code
 
     # Remove any headers
-    script = re.sub(r'^#+\s+.*$', '', script, flags=re.MULTILINE)
+    script = re.sub(r"^#+\s+.*$", "", script, flags=re.MULTILINE)
 
     # Remove citations (Author Year pattern only, not general parentheticals)
     # Matches: (Smith 2020), (Smith et al., 2020), (Smith & Jones 2019)
     # Does NOT match: (about 3000 participants), (2019-2020), (circa 1985)
-    script = re.sub(r'\([A-Z][a-zA-Z\s&.,]+(?:19|20)\d{2}[^)]*\)', '', script)
-    script = re.sub(r'\[[^\]]+\]', '', script)
+    script = re.sub(r"\([A-Z][a-zA-Z\s&.,]+(?:19|20)\d{2}[^)]*\)", "", script)
+    script = re.sub(r"\[[^\]]+\]", "", script)
 
     # Clean whitespace
-    script = re.sub(r'\s+', ' ', script)
+    script = re.sub(r"\s+", " ", script)
     return script.strip()
 
 
@@ -180,26 +182,20 @@ def generate_digest(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generate 60-second audio digest for any paper"
-    )
+    parser = argparse.ArgumentParser(description="Generate 60-second audio digest for any paper")
     parser.add_argument("document", help="Path to document (PDF, MD, or TXT)")
     parser.add_argument("--output", "-o", help="Output directory")
     parser.add_argument(
         "--voice",
         default="rachel",
         choices=["rachel", "adam", "josh", "elli", "bella"],
-        help="ElevenLabs voice (default: rachel)"
+        help="ElevenLabs voice (default: rachel)",
     )
-    parser.add_argument(
-        "--no-audio",
-        action="store_true",
-        help="Skip audio generation"
-    )
+    parser.add_argument("--no-audio", action="store_true", help="Skip audio generation")
     parser.add_argument(
         "--model",
         default="gemini-3-flash-preview",
-        help="Gemini model (default: gemini-3-flash-preview)"
+        help="Gemini model (default: gemini-3-flash-preview)",
     )
 
     args = parser.parse_args()

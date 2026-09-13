@@ -2,15 +2,22 @@
 """Tests for the ResearchBrief structured input (optimization priority 1)."""
 
 import json
-import pytest
+import sys
 from pathlib import Path
 
-import sys
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
 from research_brief import (
-    ResearchBrief, Hypothesis, ResearchTask, MetricSpec, BaselineSpec,
-    AblationSpec, SectionSpec, infer_role,
+    AblationSpec,
+    BaselineSpec,
+    Hypothesis,
+    MetricSpec,
+    ResearchBrief,
+    ResearchTask,
+    SectionSpec,
+    infer_role,
 )
 
 
@@ -67,7 +74,8 @@ class TestFromDict:
 
     def test_roundtrip(self):
         brief = ResearchBrief(
-            title="T", research_questions=["RQ1: x"],
+            title="T",
+            research_questions=["RQ1: x"],
             baselines=[BaselineSpec(name="TGN")],
             metrics=[MetricSpec(name="Hits@K", k_value=10, priority="primary")],
             forbidden_claims=["no causal claims"],
@@ -163,11 +171,13 @@ class TestRoles:
         assert infer_role("Threat Model") is None
 
     def test_post_init_infers_roles(self):
-        brief = ResearchBrief(output_sections=[
-            {"title": "Introduction"},
-            {"title": "Experiments"},
-            {"title": "Threat Model"},
-        ])
+        brief = ResearchBrief(
+            output_sections=[
+                {"title": "Introduction"},
+                {"title": "Experiments"},
+                {"title": "Threat Model"},
+            ]
+        )
         roles = [s.role for s in brief.output_sections]
         assert roles[0] == "introduction"
         assert roles[1] == "results"

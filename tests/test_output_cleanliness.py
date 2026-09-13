@@ -13,17 +13,15 @@ Run with: python -m pytest tests/test_output_cleanliness.py -v
 import sys
 from pathlib import Path
 
-import pytest
-
 # Ensure engine package is importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
 from utils.text_utils import clean_agent_output
 
-
 # ---------------------------------------------------------------------------
 # Pass A — Planning preamble stripping (Ticket 017)
 # ---------------------------------------------------------------------------
+
 
 class TestStripPreamble:
     def test_strip_preamble_okay_i_understand(self):
@@ -166,34 +164,23 @@ class TestStripPreamble:
 # Pass B — Metadata stripping (Ticket 018)
 # ---------------------------------------------------------------------------
 
+
 class TestStripMetadata:
     def test_strip_metadata_section_line(self):
-        text = (
-            "**Section:** Literature Review\n"
-            "\n"
-            "The literature on this topic is extensive.\n"
-        )
+        text = "**Section:** Literature Review\n\nThe literature on this topic is extensive.\n"
         result = clean_agent_output(text)
         assert "**Section:**" not in result
         assert "The literature on this topic is extensive." in result
 
     def test_strip_metadata_word_count(self):
-        text = (
-            "The findings suggest a strong correlation.\n"
-            "\n"
-            "**Word Count:** 2,294 words\n"
-        )
+        text = "The findings suggest a strong correlation.\n\n**Word Count:** 2,294 words\n"
         result = clean_agent_output(text)
         assert "**Word Count:**" not in result
         assert "The findings suggest a strong correlation." in result
 
     def test_strip_metadata_status(self):
         text = (
-            "**Status:** Draft v1\n"
-            "\n"
-            "# Introduction\n"
-            "\n"
-            "This chapter introduces the core argument.\n"
+            "**Status:** Draft v1\n\n# Introduction\n\nThis chapter introduces the core argument.\n"
         )
         result = clean_agent_output(text)
         assert "**Status:**" not in result
@@ -345,6 +332,7 @@ class TestStripMetadata:
 # Pass C — cite_MISSING stripping (Ticket 019)
 # ---------------------------------------------------------------------------
 
+
 class TestStripCiteMissing:
     def test_strip_cite_missing_basic(self):
         text = "Recent studies {cite_MISSING: housing affordability 2023} show a decline."
@@ -399,6 +387,7 @@ class TestStripCiteMissing:
 # ---------------------------------------------------------------------------
 # Combined pass
 # ---------------------------------------------------------------------------
+
 
 class TestCleanAgentOutputCombined:
     def test_clean_agent_output_combined(self):

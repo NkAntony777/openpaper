@@ -3,11 +3,10 @@ ABOUTME: LLM output validation layer for draft generation pipeline
 ABOUTME: Detects hallucinations, repetitions, JSON errors, length violations
 """
 
-from typing import List, Optional, Callable
-from dataclasses import dataclass, field
 import json
-import re
 import logging
+from dataclasses import dataclass, field
+from typing import Callable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +21,7 @@ class ValidationResult:
         error_message: Detailed error description (empty if valid)
         warnings: Optional list of non-critical warnings
     """
+
     is_valid: bool
     error_message: str = ""
     warnings: List[str] = field(default_factory=list)
@@ -40,10 +40,7 @@ class OutputValidator:
     """
 
     @staticmethod
-    def validate_json(
-        output: str,
-        max_size_mb: float = 1.0
-    ) -> ValidationResult:
+    def validate_json(output: str, max_size_mb: float = 1.0) -> ValidationResult:
         """
         Validate JSON structure and detect corruption.
 
@@ -59,11 +56,11 @@ class OutputValidator:
             >>> assert result.is_valid
         """
         # Check size before parsing
-        size_mb = len(output.encode('utf-8')) / (1024 * 1024)
+        size_mb = len(output.encode("utf-8")) / (1024 * 1024)
         if size_mb > max_size_mb:
             return ValidationResult(
                 is_valid=False,
-                error_message=f"JSON too large: {size_mb:.2f}MB (max: {max_size_mb}MB)"
+                error_message=f"JSON too large: {size_mb:.2f}MB (max: {max_size_mb}MB)",
             )
 
         # Validate JSON structure
@@ -72,10 +69,7 @@ class OutputValidator:
 
             # Validate it's not empty
             if not parsed:
-                return ValidationResult(
-                    is_valid=False,
-                    error_message="JSON is empty"
-                )
+                return ValidationResult(is_valid=False, error_message="JSON is empty")
 
             logger.debug(f"✅ Valid JSON: {size_mb:.2f}MB, {len(str(parsed))} chars")
             return ValidationResult(is_valid=True)
@@ -83,14 +77,12 @@ class OutputValidator:
         except json.JSONDecodeError as e:
             return ValidationResult(
                 is_valid=False,
-                error_message=f"Invalid JSON at line {e.lineno}, col {e.colno}: {e.msg}"
+                error_message=f"Invalid JSON at line {e.lineno}, col {e.colno}: {e.msg}",
             )
 
     @staticmethod
     def detect_token_repetition(
-        output: str,
-        max_consecutive_repeats: int = 10,
-        max_pattern_repeats: int = 3
+        output: str, max_consecutive_repeats: int = 10, max_pattern_repeats: int = 3
     ) -> ValidationResult:
         """
         Detect LLM hallucination/repetition loops.
@@ -115,20 +107,17 @@ class OutputValidator:
         words = output.split()
 
         if not words:
-            return ValidationResult(
-                is_valid=False,
-                error_message="Empty output"
-            )
+            return ValidationResult(is_valid=False, error_message="Empty output")
 
         # Check for single word repetition
         consecutive_count = 1
         for i in range(1, len(words)):
-            if words[i] == words[i-1]:
+            if words[i] == words[i - 1]:
                 consecutive_count += 1
                 if consecutive_count >= max_consecutive_repeats:
                     return ValidationResult(
                         is_valid=False,
-                        error_message=f"Infinite repetition detected: '{words[i]}' repeated {consecutive_count} times consecutively"
+                        error_message=f"Infinite repetition detected: '{words[i]}' repeated {consecutive_count} times consecutively",
                     )
             else:
                 consecutive_count = 1
@@ -140,13 +129,13 @@ class OutputValidator:
                 continue
 
             for i in range(len(words) - (pattern_length * max_pattern_repeats)):
-                pattern = tuple(words[i:i+pattern_length])
+                pattern = tuple(words[i : i + pattern_length])
 
                 # Check if pattern repeats immediately after
                 repeat_count = 1
                 j = i + pattern_length
                 while j + pattern_length <= len(words):
-                    next_pattern = tuple(words[j:j+pattern_length])
+                    next_pattern = tuple(words[j : j + pattern_length])
                     if next_pattern == pattern:
                         repeat_count += 1
                         j += pattern_length
@@ -154,10 +143,10 @@ class OutputValidator:
                         break
 
                 if repeat_count >= max_pattern_repeats:
-                    pattern_str = ' '.join(pattern)
+                    pattern_str = " ".join(pattern)
                     return ValidationResult(
                         is_valid=False,
-                        error_message=f"Pattern repetition detected: '{pattern_str}' repeated {repeat_count} times"
+                        error_message=f"Pattern repetition detected: '{pattern_str}' repeated {repeat_count} times",
                     )
 
         logger.debug(f"✅ No repetition detected in {len(words)} words")
@@ -169,7 +158,7 @@ class OutputValidator:
         min_words: Optional[int] = None,
         max_words: Optional[int] = None,
         min_chars: Optional[int] = None,
-        max_chars: Optional[int] = None
+        max_chars: Optional[int] = None,
     ) -> ValidationResult:
         """
         Validate output meets length requirements.
@@ -195,26 +184,26 @@ class OutputValidator:
         if min_words is not None and word_count < min_words:
             return ValidationResult(
                 is_valid=False,
-                error_message=f"Output too short: {word_count} words (minimum: {min_words})"
+                error_message=f"Output too short: {word_count} words (minimum: {min_words})",
             )
 
         if max_words is not None and word_count > max_words:
             return ValidationResult(
                 is_valid=False,
-                error_message=f"Output too long: {word_count} words (maximum: {max_words})"
+                error_message=f"Output too long: {word_count} words (maximum: {max_words})",
             )
 
         # Character count validation
         if min_chars is not None and char_count < min_chars:
             return ValidationResult(
                 is_valid=False,
-                error_message=f"Output too short: {char_count} characters (minimum: {min_chars})"
+                error_message=f"Output too short: {char_count} characters (minimum: {min_chars})",
             )
 
         if max_chars is not None and char_count > max_chars:
             return ValidationResult(
                 is_valid=False,
-                error_message=f"Output too long: {char_count} characters (maximum: {max_chars})"
+                error_message=f"Output too long: {char_count} characters (maximum: {max_chars})",
             )
 
         logger.debug(f"✅ Length requirements met: {word_count} words, {char_count} chars")
@@ -222,8 +211,7 @@ class OutputValidator:
 
     @staticmethod
     def validate_output(
-        output: str,
-        validators: List[Callable[[str], ValidationResult]]
+        output: str, validators: List[Callable[[str], ValidationResult]]
     ) -> ValidationResult:
         """
         Run multiple validators on output and return first failure.
@@ -279,8 +267,8 @@ class ScoutOutputValidator(OutputValidator):
             lambda x: OutputValidator.check_length_requirements(
                 x,
                 min_chars=1000,  # At least 1KB of JSON
-                max_chars=500000  # Max 500KB to prevent hallucination
-            )
+                max_chars=500000,  # Max 500KB to prevent hallucination
+            ),
         ]
 
         return OutputValidator.validate_output(output, validators)
@@ -312,8 +300,8 @@ class ScribeOutputValidator(OutputValidator):
             lambda x: OutputValidator.check_length_requirements(
                 x,
                 min_words=5000,  # Minimum for quality review
-                max_words=50000  # Maximum to prevent runaway generation
-            )
+                max_words=50000,  # Maximum to prevent runaway generation
+            ),
         ]
 
         return OutputValidator.validate_output(output, validators)

@@ -4,13 +4,13 @@ ABOUTME: Citation compiler for deterministic citation ID replacement and missing
 ABOUTME: Replaces {cite_001} with formatted citations, researches {cite_MISSING:topic} placeholders, generates reference lists
 """
 
-import re
 import logging
-from typing import Any, Dict, List, Tuple, Set, Optional
+import re
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from utils.citation_database import Citation, CitationDatabase, CitationStyle
 from utils.api_citations import CitationResearcher
+from utils.citation_database import Citation, CitationDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,12 @@ logger = logging.getLogger(__name__)
 class CitationCompiler:
     """Deterministic citation compiler with automatic missing citation research."""
 
-    def __init__(self, database: CitationDatabase, model: Optional[Any] = None, complexity_threshold: float = 0.7):
+    def __init__(
+        self,
+        database: CitationDatabase,
+        model: Optional[Any] = None,
+        complexity_threshold: float = 0.7,
+    ):
         """
         Initialize compiler with citation database.
 
@@ -41,7 +46,10 @@ class CitationCompiler:
         # Initialize API-backed citation researcher (Crossref → Semantic Scholar → Gemini Grounded → Gemini LLM)
         # Semantic Scholar can be disabled via env var if rate limited (403 errors)
         import os
-        enable_semantic_scholar = os.environ.get('ENABLE_SEMANTIC_SCHOLAR', 'true').lower() != 'false'
+
+        enable_semantic_scholar = (
+            os.environ.get("ENABLE_SEMANTIC_SCHOLAR", "true").lower() != "false"
+        )
 
         self.researcher = CitationResearcher(
             gemini_model=model,
@@ -49,7 +57,7 @@ class CitationCompiler:
             enable_semantic_scholar=enable_semantic_scholar,
             enable_gemini_grounded=True,  # Enable Gemini Grounded for web sources
             enable_llm_fallback=True,
-            verbose=False  # Will be overridden by method verbose parameter
+            verbose=False,  # Will be overridden by method verbose parameter
         )
 
     def _research_missing_citation(self, topic: str, verbose: bool = True) -> Optional[Citation]:
@@ -68,7 +76,7 @@ class CitationCompiler:
         """
         if not self.research_enabled:
             if verbose:
-                print(f"  ⚠️  Research disabled - no model provided")
+                print("  ⚠️  Research disabled - no model provided")
             return None
 
         # Set verbose mode on researcher
@@ -88,7 +96,9 @@ class CitationCompiler:
             existing_ids = list(self.citation_lookup.keys())
             if existing_ids:
                 # Get max number from cite_XXX
-                max_num = max(int(cid.replace("cite_", "")) for cid in existing_ids if cid.startswith("cite_"))
+                max_num = max(
+                    int(cid.replace("cite_", "")) for cid in existing_ids if cid.startswith("cite_")
+                )
                 next_id = f"cite_{max_num + 1:03d}"
             else:
                 next_id = "cite_001"
@@ -104,7 +114,9 @@ class CitationCompiler:
         else:
             return None
 
-    def compile_citations(self, text: str, research_missing: bool = True, verbose: bool = True) -> Tuple[str, List[str], List[str]]:
+    def compile_citations(
+        self, text: str, research_missing: bool = True, verbose: bool = True
+    ) -> Tuple[str, List[str], List[str]]:
         """
         Replace citation IDs with formatted citations and research missing citations.
 
@@ -126,13 +138,17 @@ class CitationCompiler:
 
         # Step 1: Find and research all {cite_MISSING:topic} placeholders
         if research_missing:
-            missing_pattern = r'\{cite_MISSING:([^}]+)\}'
+            missing_pattern = r"\{cite_MISSING:([^}]+)\}"
             missing_matches = re.findall(missing_pattern, text)
 
             if missing_matches and verbose:
-                unique_topics = list(dict.fromkeys(missing_matches))  # Preserve order, remove duplicates
-                print(f"\n🔍 Found {len(missing_matches)} missing citation placeholders ({len(unique_topics)} unique topics)")
-                print(f"📚 Researching citations with Scout agent...")
+                unique_topics = list(
+                    dict.fromkeys(missing_matches)
+                )  # Preserve order, remove duplicates
+                print(
+                    f"\n🔍 Found {len(missing_matches)} missing citation placeholders ({len(unique_topics)} unique topics)"
+                )
+                print("📚 Researching citations with Scout agent...")
 
             # Research each unique topic
             unique_topics = list(dict.fromkeys(missing_matches))
@@ -148,12 +164,14 @@ class CitationCompiler:
                     text = text.replace(f"{{cite_MISSING:{topic}}}", f"{{{citation.id}}}")
 
             if verbose and researched_topics:
-                print(f"\n✅ Successfully researched {len(researched_topics)}/{len(unique_topics)} citations")
+                print(
+                    f"\n✅ Successfully researched {len(researched_topics)}/{len(unique_topics)} citations"
+                )
 
         # Step 2: Replace all {cite_XXX} patterns (including newly created ones from research)
         def replace_citation(match: re.Match) -> str:
             """Replace single citation ID with formatted citation."""
-            cite_id = match.group(0).strip('{}')  # Extract cite_001 from {cite_001}
+            cite_id = match.group(0).strip("{}")  # Extract cite_001 from {cite_001}
 
             if cite_id not in self.citation_lookup:
                 missing_ids.append(cite_id)
@@ -163,16 +181,18 @@ class CitationCompiler:
             return self.format_in_text_citation(citation)
 
         # Replace all {cite_XXX} patterns
-        citation_pattern = r'\{cite_\d{3}\}'
+        citation_pattern = r"\{cite_\d{3}\}"
         formatted_text = re.sub(citation_pattern, replace_citation, text)
 
         # Step 3: Handle any remaining {cite_MISSING:topic} that couldn't be researched
-        remaining_missing_pattern = r'\{cite_MISSING:([^}]+)\}'
+        remaining_missing_pattern = r"\{cite_MISSING:([^}]+)\}"
         remaining_matches = re.findall(remaining_missing_pattern, formatted_text)
         if remaining_matches:
             # Replace with [MISSING: topic] markers
             for topic in remaining_matches:
-                formatted_text = formatted_text.replace(f"{{cite_MISSING:{topic}}}", f"[MISSING: {topic.strip()}]")
+                formatted_text = formatted_text.replace(
+                    f"{{cite_MISSING:{topic}}}", f"[MISSING: {topic.strip()}]"
+                )
                 if topic.strip() not in missing_ids:
                     missing_ids.append(f"TOPIC:{topic.strip()}")
 
@@ -520,9 +540,7 @@ class CitationCompiler:
         """
         # Get citations for cited IDs only
         cited_citations = [
-            self.citation_lookup[cid]
-            for cid in sorted(cited_ids)
-            if cid in self.citation_lookup
+            self.citation_lookup[cid] for cid in sorted(cited_ids) if cid in self.citation_lookup
         ]
 
         # Determine header name based on style
@@ -585,9 +603,9 @@ class CitationCompiler:
         """Extract all citation IDs mentioned in text."""
         # Find both {cite_XXX} and formatted citations
         # For now, look for {cite_XXX} patterns
-        pattern = r'\{cite_\d{3}\}'
+        pattern = r"\{cite_\d{3}\}"
         matches = re.findall(pattern, text)
-        return {match.strip('{}') for match in matches}
+        return {match.strip("{}") for match in matches}
 
     def _has_placeholder_references(self, text: str) -> bool:
         """
@@ -601,11 +619,13 @@ class CitationCompiler:
         """
         # Pattern for References header followed by placeholder text
         placeholder_patterns = [
-            r'##\s+(?:References|Literaturverzeichnis|Bibliograf[íi]a|Références)\s*\n+\s*\[(?:Wird automatisch generiert|To be completed|A generar|À compléter)\]',
-            r'##\s+(?:References|Literaturverzeichnis|Bibliograf[íi]a|Références)\s*\n+\s*\((?:No citations|Keine Zitate|Sin citas)\)',
+            r"##\s+(?:References|Literaturverzeichnis|Bibliograf[íi]a|Références)\s*\n+\s*\[(?:Wird automatisch generiert|To be completed|A generar|À compléter)\]",
+            r"##\s+(?:References|Literaturverzeichnis|Bibliograf[íi]a|Références)\s*\n+\s*\((?:No citations|Keine Zitate|Sin citas)\)",
         ]
 
-        return any(re.search(pattern, text, re.IGNORECASE | re.DOTALL) for pattern in placeholder_patterns)
+        return any(
+            re.search(pattern, text, re.IGNORECASE | re.DOTALL) for pattern in placeholder_patterns
+        )
 
     def _has_content_full_references(self, text: str) -> bool:
         """
@@ -621,12 +641,12 @@ class CitationCompiler:
         """
         # Universal References header patterns (all languages)
         references_patterns = [
-            r'##\s+References\s*\n+(.*?)(?=\n##|\Z)',
-            r'##\s+Bibliography\s*\n+(.*?)(?=\n##|\Z)',
-            r'##\s+Literaturverzeichnis\s*\n+(.*?)(?=\n##|\Z)',
-            r'##\s+Referenzen\s*\n+(.*?)(?=\n##|\Z)',
-            r'##\s+Bibliograf[íi]a\s*\n+(.*?)(?=\n##|\Z)',
-            r'##\s+Références\s*\n+(.*?)(?=\n##|\Z)',
+            r"##\s+References\s*\n+(.*?)(?=\n##|\Z)",
+            r"##\s+Bibliography\s*\n+(.*?)(?=\n##|\Z)",
+            r"##\s+Literaturverzeichnis\s*\n+(.*?)(?=\n##|\Z)",
+            r"##\s+Referenzen\s*\n+(.*?)(?=\n##|\Z)",
+            r"##\s+Bibliograf[íi]a\s*\n+(.*?)(?=\n##|\Z)",
+            r"##\s+Références\s*\n+(.*?)(?=\n##|\Z)",
         ]
 
         for pattern in references_patterns:
@@ -636,14 +656,13 @@ class CitationCompiler:
 
                 # Check for placeholder indicators
                 placeholder_indicators = [
-                    r'\[(?:Wird automatisch generiert|To be completed|A generar|À compléter)\]',
-                    r'^\s*$',  # Empty
-                    r'^\(No citations',
+                    r"\[(?:Wird automatisch generiert|To be completed|A generar|À compléter)\]",
+                    r"^\s*$",  # Empty
+                    r"^\(No citations",
                 ]
 
                 is_placeholder = any(
-                    re.search(ind, section_content, re.IGNORECASE)
-                    for ind in placeholder_indicators
+                    re.search(ind, section_content, re.IGNORECASE) for ind in placeholder_indicators
                 )
 
                 if is_placeholder:
@@ -651,17 +670,14 @@ class CitationCompiler:
 
                 # Check for actual citation indicators
                 citation_indicators = [
-                    r'https?://doi\.org/',  # DOI URLs
-                    r'\(\d{4}\)',  # Year in parentheses
-                    r'et al\.',  # Author formatting
-                    r'&',  # Author separators in APA
-                    r'\*\w+\*',  # Italics (journal/book titles)
+                    r"https?://doi\.org/",  # DOI URLs
+                    r"\(\d{4}\)",  # Year in parentheses
+                    r"et al\.",  # Author formatting
+                    r"&",  # Author separators in APA
+                    r"\*\w+\*",  # Italics (journal/book titles)
                 ]
 
-                has_citations = any(
-                    re.search(ind, section_content)
-                    for ind in citation_indicators
-                )
+                has_citations = any(re.search(ind, section_content) for ind in citation_indicators)
 
                 return has_citations  # Has actual citations
 
@@ -690,7 +706,7 @@ class CitationCompiler:
         # Format based on source type
         source_type = citation.source_type
 
-        if source_type == 'journal':
+        if source_type == "journal":
             journal = citation.journal or ""
             volume = citation.volume
             issue = citation.issue
@@ -711,7 +727,7 @@ class CitationCompiler:
                 ref += f". {url}"
             ref += "."
 
-        elif source_type == 'book':
+        elif source_type == "book":
             publisher = citation.publisher or ""
             doi = citation.doi or ""
             url = citation.url or ""
@@ -725,7 +741,7 @@ class CitationCompiler:
             elif url:
                 ref += f" {url}"
 
-        elif source_type in ['report', 'website']:
+        elif source_type in ["report", "website"]:
             url = citation.url or ""
             doi = citation.doi or ""
             publisher = citation.publisher or ""
@@ -740,7 +756,7 @@ class CitationCompiler:
             elif url:
                 ref += f" {url}"
 
-        elif source_type == 'conference':
+        elif source_type == "conference":
             publisher = citation.publisher or ""
             pages = citation.pages or ""
             doi = citation.doi or ""
@@ -785,12 +801,12 @@ class CitationCompiler:
         # Format based on source type
         source_type = citation.source_type
 
-        if source_type == 'journal':
+        if source_type == "journal":
             journal = citation.journal or ""
             volume = citation.volume or ""
             pages = citation.pages or ""
 
-            ref = f"[{citation.id.replace('cite_', '')}] {author_str}, \"{title},\" *{journal}*"
+            ref = f'[{citation.id.replace("cite_", "")}] {author_str}, "{title}," *{journal}*'
             if volume:
                 ref += f", vol. {volume}"
             if pages:
@@ -798,7 +814,7 @@ class CitationCompiler:
             ref += f", {year}."
 
         else:
-            ref = f"[{citation.id.replace('cite_', '')}] {author_str}, \"{title},\" {year}."
+            ref = f'[{citation.id.replace("cite_", "")}] {author_str}, "{title}," {year}.'
 
         return ref
 
@@ -820,7 +836,7 @@ class CitationCompiler:
 
         source_type = citation.source_type
 
-        if source_type == 'journal':
+        if source_type == "journal":
             journal = citation.journal or ""
             volume = citation.volume
             issue = citation.issue
@@ -829,7 +845,7 @@ class CitationCompiler:
             url = citation.url or ""
 
             # Chicago journal: Author. Year. "Title." Journal Volume, no. Issue: Pages. DOI/URL.
-            ref = f"{author_str} {year}. \"{title}.\" *{journal}*"
+            ref = f'{author_str} {year}. "{title}." *{journal}*'
             if volume:
                 ref += f" {volume}"
             if issue:
@@ -842,7 +858,7 @@ class CitationCompiler:
             elif url:
                 ref += f" {url}."
 
-        elif source_type == 'book':
+        elif source_type == "book":
             publisher = citation.publisher or ""
             doi = citation.doi or ""
             url = citation.url or ""
@@ -855,11 +871,11 @@ class CitationCompiler:
             elif url:
                 ref += f" {url}."
 
-        elif source_type == 'conference':
+        elif source_type == "conference":
             publisher = citation.publisher or ""
             pages = citation.pages or ""
 
-            ref = f"{author_str} {year}. \"{title}.\""
+            ref = f'{author_str} {year}. "{title}."'
             if publisher:
                 ref += f" In {publisher}."
             if pages:
@@ -868,7 +884,7 @@ class CitationCompiler:
         else:
             doi = citation.doi or ""
             url = citation.url or ""
-            ref = f"{author_str} {year}. \"{title}.\""
+            ref = f'{author_str} {year}. "{title}."'
             if doi:
                 ref += f" https://doi.org/{doi}."
             elif url:
@@ -892,7 +908,7 @@ class CitationCompiler:
 
         source_type = citation.source_type
 
-        if source_type == 'journal':
+        if source_type == "journal":
             journal = citation.journal or ""
             volume = citation.volume
             issue = citation.issue
@@ -901,7 +917,7 @@ class CitationCompiler:
             url = citation.url or ""
 
             # MLA journal: Author. "Title." Journal, vol. V, no. I, Year, pp. Pages. DOI/URL.
-            ref = f"{author_str} \"{title}.\" *{journal}*"
+            ref = f'{author_str} "{title}." *{journal}*'
             if volume:
                 ref += f", vol. {volume}"
             if issue:
@@ -915,7 +931,7 @@ class CitationCompiler:
             elif url:
                 ref += f" {url}."
 
-        elif source_type == 'book':
+        elif source_type == "book":
             publisher = citation.publisher or ""
             doi = citation.doi or ""
             url = citation.url or ""
@@ -930,11 +946,11 @@ class CitationCompiler:
             elif url:
                 ref += f" {url}."
 
-        elif source_type in ['report', 'website']:
+        elif source_type in ["report", "website"]:
             url = citation.url or ""
             publisher = citation.publisher or ""
 
-            ref = f"{author_str} \"{title}.\""
+            ref = f'{author_str} "{title}."'
             if publisher:
                 ref += f" {publisher},"
             ref += f" {year}."
@@ -944,7 +960,7 @@ class CitationCompiler:
         else:
             doi = citation.doi or ""
             url = citation.url or ""
-            ref = f"{author_str} \"{title}.\" {year}."
+            ref = f'{author_str} "{title}." {year}.'
             if doi:
                 ref += f" https://doi.org/{doi}."
             elif url:
@@ -966,27 +982,26 @@ class CitationCompiler:
         issues = []
 
         # Check for remaining citation IDs (should be none)
-        remaining_ids = re.findall(r'\{cite_\d{3}\}', compiled)
+        remaining_ids = re.findall(r"\{cite_\d{3}\}", compiled)
         if remaining_ids:
-            issues.append(f"Found {len(remaining_ids)} un-replaced citation IDs: {remaining_ids[:5]}")
+            issues.append(
+                f"Found {len(remaining_ids)} un-replaced citation IDs: {remaining_ids[:5]}"
+            )
 
         # Check for MISSING markers
-        missing_markers = re.findall(r'\[MISSING: cite_\d{3}\]', compiled)
+        missing_markers = re.findall(r"\[MISSING: cite_\d{3}\]", compiled)
         if missing_markers:
             issues.append(f"Found {len(missing_markers)} missing citations: {missing_markers}")
 
         # Extract citation IDs from original
-        original_ids = set(re.findall(r'cite_\d{3}', original))
-
-        # Check all IDs were processed
-        unprocessed = original_ids - {m.replace('[MISSING: ', '').replace(']', '') for m in missing_markers}
+        original_ids = set(re.findall(r"cite_\d{3}", original))
 
         return {
-            'success': len(issues) == 0,
-            'issues': issues,
-            'total_citations': len(original_ids),
-            'successfully_compiled': len(original_ids) - len(missing_markers),
-            'missing_citations': len(missing_markers),
+            "success": len(issues) == 0,
+            "issues": issues,
+            "total_citations": len(original_ids),
+            "successfully_compiled": len(original_ids) - len(missing_markers),
+            "missing_citations": len(missing_markers),
         }
 
     def generate_coverage_report(self, draft: str) -> Dict[str, Any]:
@@ -1007,10 +1022,7 @@ class CitationCompiler:
 
         # Calculate unused
         unused_ids = all_citation_ids - cited_ids
-        unused_citations = [
-            self.citation_lookup[cid]
-            for cid in sorted(unused_ids)
-        ]
+        unused_citations = [self.citation_lookup[cid] for cid in sorted(unused_ids)]
 
         # Calculate statistics
         total = len(all_citation_ids)
@@ -1018,12 +1030,12 @@ class CitationCompiler:
         coverage = (used / total * 100) if total > 0 else 0
 
         return {
-            'total_citations_available': total,
-            'citations_used': used,
-            'citations_unused': len(unused_ids),
-            'coverage_percentage': coverage,
-            'unused_citations': unused_citations,
-            'cited_ids': cited_ids,
+            "total_citations_available": total,
+            "citations_used": used,
+            "citations_unused": len(unused_ids),
+            "coverage_percentage": coverage,
+            "unused_citations": unused_citations,
+            "cited_ids": cited_ids,
         }
 
     def analyze_section_complexity(self, section_text: str) -> Dict[str, Any]:
@@ -1052,24 +1064,49 @@ class CitationCompiler:
         # Extract metrics
         words = section_text.split()
         word_count = len(words)
-        sentences = section_text.split('.')
+        sentences = section_text.split(".")
         sentence_count = max(1, len([s for s in sentences if s.strip()]))
 
         # Factor 1: Technical term density (presence of academic/technical terms)
         technical_terms = [
-            'methodology', 'framework', 'paradigm', 'theoretical', 'empirical',
-            'analysis', 'syndraft', 'hypodraft', 'validation', 'verification',
-            'algorithm', 'optimization', 'implementation', 'architecture',
-            'governance', 'compliance', 'regulation', 'standard', 'protocol',
-            'infrastructure', 'integration', 'scalability', 'performance',
-            'systematic', 'comprehensive', 'interdisciplinary', 'multifaceted'
+            "methodology",
+            "framework",
+            "paradigm",
+            "theoretical",
+            "empirical",
+            "analysis",
+            "syndraft",
+            "hypodraft",
+            "validation",
+            "verification",
+            "algorithm",
+            "optimization",
+            "implementation",
+            "architecture",
+            "governance",
+            "compliance",
+            "regulation",
+            "standard",
+            "protocol",
+            "infrastructure",
+            "integration",
+            "scalability",
+            "performance",
+            "systematic",
+            "comprehensive",
+            "interdisciplinary",
+            "multifaceted",
         ]
         technical_count = sum(1 for word in words if word.lower() in technical_terms)
-        technical_density = min(technical_count / max(1, word_count / 100), 1.0)  # Per 100 words, capped at 1.0
+        technical_density = min(
+            technical_count / max(1, word_count / 100), 1.0
+        )  # Per 100 words, capped at 1.0
 
         # Factor 2: Citation density (how research-heavy is this section?)
-        citation_pattern_count = section_text.count('{cite_')
-        citation_density = min(citation_pattern_count / max(1, sentence_count / 10), 1.0)  # Per 10 sentences
+        citation_pattern_count = section_text.count("{cite_")
+        citation_density = min(
+            citation_pattern_count / max(1, sentence_count / 10), 1.0
+        )  # Per 10 sentences
 
         # Factor 3: Section length (longer sections = more complex topics)
         # Normalize: 500 words = 0.5, 1000+ words = 1.0
@@ -1077,41 +1114,58 @@ class CitationCompiler:
 
         # Factor 4: Academic keywords (research-oriented language)
         academic_keywords = [
-            'research', 'study', 'literature', 'review', 'survey', 'investigation',
-            'evidence', 'findings', 'results', 'discussion', 'implications',
-            'limitations', 'future work', 'contributions', 'novelty',
-            'state-of-the-art', 'cutting-edge', 'emerging', 'recent developments'
+            "research",
+            "study",
+            "literature",
+            "review",
+            "survey",
+            "investigation",
+            "evidence",
+            "findings",
+            "results",
+            "discussion",
+            "implications",
+            "limitations",
+            "future work",
+            "contributions",
+            "novelty",
+            "state-of-the-art",
+            "cutting-edge",
+            "emerging",
+            "recent developments",
         ]
-        keyword_count = sum(1 for keyword in academic_keywords if keyword.lower() in section_text.lower())
+        keyword_count = sum(
+            1 for keyword in academic_keywords if keyword.lower() in section_text.lower()
+        )
         keyword_density = min(keyword_count / 5, 1.0)  # 5+ keywords = 1.0
 
         # Calculate weighted complexity score
         complexity_score = (
-            technical_density * 0.3 +      # 30% weight
-            citation_density * 0.3 +       # 30% weight
-            length_factor * 0.2 +          # 20% weight
-            keyword_density * 0.2          # 20% weight
+            technical_density * 0.3  # 30% weight
+            + citation_density * 0.3  # 30% weight
+            + length_factor * 0.2  # 20% weight
+            + keyword_density * 0.2  # 20% weight
         )
 
         is_complex = complexity_score >= self.complexity_threshold
 
         return {
-            'complexity_score': round(complexity_score, 3),
-            'is_complex': is_complex,
-            'factors': {
-                'technical_density': round(technical_density, 3),
-                'citation_density': round(citation_density, 3),
-                'length_factor': round(length_factor, 3),
-                'keyword_density': round(keyword_density, 3)
+            "complexity_score": round(complexity_score, 3),
+            "is_complex": is_complex,
+            "factors": {
+                "technical_density": round(technical_density, 3),
+                "citation_density": round(citation_density, 3),
+                "length_factor": round(length_factor, 3),
+                "keyword_density": round(keyword_density, 3),
             },
-            'recommendation': 'deep_research' if is_complex else 'standard_research',
-            'metrics': {
-                'word_count': word_count,
-                'sentence_count': sentence_count,
-                'citation_count': citation_pattern_count,
-                'technical_terms': technical_count,
-                'academic_keywords': keyword_count
-            }
+            "recommendation": "deep_research" if is_complex else "standard_research",
+            "metrics": {
+                "word_count": word_count,
+                "sentence_count": sentence_count,
+                "citation_count": citation_pattern_count,
+                "technical_terms": technical_count,
+                "academic_keywords": keyword_count,
+            },
         }
 
 
@@ -1129,29 +1183,31 @@ def format_coverage_report(report: Dict[str, Any]) -> str:
 
 ## Summary Statistics
 
-- **Total citations available**: {report['total_citations_available']}
-- **Citations used in draft**: {report['citations_used']}
-- **Citations unused**: {report['citations_unused']}
-- **Coverage percentage**: {report['coverage_percentage']:.1f}%
+- **Total citations available**: {report["total_citations_available"]}
+- **Citations used in draft**: {report["citations_used"]}
+- **Citations unused**: {report["citations_unused"]}
+- **Coverage percentage**: {report["coverage_percentage"]:.1f}%
 
 ## Analysis
 
 """
 
     # Add analysis based on coverage percentage
-    if report['coverage_percentage'] < 50:
-        output += "⚠️  **Low citation coverage** - Consider using more sources from the database.\n\n"
-    elif report['coverage_percentage'] > 90:
+    if report["coverage_percentage"] < 50:
+        output += (
+            "⚠️  **Low citation coverage** - Consider using more sources from the database.\n\n"
+        )
+    elif report["coverage_percentage"] > 90:
         output += "✅ **Excellent citation coverage** - Most available sources are utilized.\n\n"
     else:
         output += "✅ **Good citation coverage** - Reasonable use of available sources.\n\n"
 
     # List unused citations
-    if report['unused_citations']:
+    if report["unused_citations"]:
         output += "## Unused Citations\n\n"
         output += "The following citations are in the database but not used in the draft:\n\n"
 
-        for citation in report['unused_citations']:
+        for citation in report["unused_citations"]:
             authors_str = ", ".join(citation.authors[:2])
             if len(citation.authors) > 2:
                 authors_str += " et al."
@@ -1175,7 +1231,7 @@ def compile_citations_in_file(
     output_path: Path,
     database: CitationDatabase,
     model: Optional[Any] = None,
-    research_missing: bool = True
+    research_missing: bool = True,
 ) -> Tuple[bool, List[str], List[str]]:
     """
     Compile citations in file using database, optionally researching missing citations.
@@ -1191,18 +1247,17 @@ def compile_citations_in_file(
         tuple: (success, list_of_missing_ids, list_of_researched_topics)
     """
     # Read input
-    with open(input_path, 'r', encoding='utf-8') as f:
+    with open(input_path, "r", encoding="utf-8") as f:
         text = f.read()
 
     # Compile citations
     compiler = CitationCompiler(database, model=model)
     compiled_text, missing_ids, researched_topics = compiler.compile_citations(
-        text,
-        research_missing=research_missing
+        text, research_missing=research_missing
     )
 
     # Write output
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(compiled_text)
 
     return len(missing_ids) == 0, missing_ids, researched_topics

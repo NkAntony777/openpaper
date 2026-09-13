@@ -4,20 +4,21 @@ ABOUTME: Tests for citation style formatting
 ABOUTME: Verifies APA, IEEE, and NALT styles work correctly, and unsupported styles raise errors
 """
 
-import pytest
 import sys
 from pathlib import Path
+
+import pytest
 
 # Add engine to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "engine"))
 
-from utils.citation_database import Citation, CitationDatabase
 from utils.citation_compiler import CitationCompiler
-
+from utils.citation_database import Citation, CitationDatabase
 
 # =============================================================================
 # TEST FIXTURES
 # =============================================================================
+
 
 @pytest.fixture
 def sample_citation_single_author():
@@ -32,7 +33,7 @@ def sample_citation_single_author():
         volume=45,
         issue=3,
         pages="123-145",
-        doi="10.1234/nature.2023.001"
+        doi="10.1234/nature.2023.001",
     )
 
 
@@ -47,7 +48,7 @@ def sample_citation_two_authors():
         source_type="journal",
         journal="Science",
         volume=30,
-        pages="50-75"
+        pages="50-75",
     )
 
 
@@ -60,7 +61,7 @@ def sample_citation_multiple_authors():
         year=2021,
         title="AI in Healthcare",
         source_type="book",
-        publisher="Academic Press"
+        publisher="Academic Press",
     )
 
 
@@ -75,7 +76,7 @@ def sample_citation_conference():
         source_type="conference",
         publisher="Proceedings of ICML 2022",
         pages="100-115",
-        doi="10.5555/icml.2022.004"
+        doi="10.5555/icml.2022.004",
     )
 
 
@@ -89,7 +90,7 @@ def sample_citation_report():
         title="Global Health Statistics",
         source_type="report",
         publisher="WHO Press",
-        url="https://www.who.int/reports/2023"
+        url="https://www.who.int/reports/2023",
     )
 
 
@@ -98,14 +99,23 @@ def sample_citation_many_authors():
     """Citation with 8+ authors for truncation testing."""
     return Citation(
         citation_id="cite_006",
-        authors=["Adams", "Baker", "Clark", "Davis", "Evans", "Foster", "Garcia", "Harris"],
+        authors=[
+            "Adams",
+            "Baker",
+            "Clark",
+            "Davis",
+            "Evans",
+            "Foster",
+            "Garcia",
+            "Harris",
+        ],
         year=2020,
         title="Large-Scale Collaboration Study",
         source_type="journal",
         journal="Collaborative Research",
         volume=12,
         pages="1-30",
-        doi="10.9999/collab.2020.006"
+        doi="10.9999/collab.2020.006",
     )
 
 
@@ -120,7 +130,7 @@ def sample_citation_three_authors():
         source_type="journal",
         journal="IEEE Transactions",
         volume=8,
-        pages="200-220"
+        pages="200-220",
     )
 
 
@@ -132,7 +142,7 @@ def sample_citation_minimal():
         authors=["Tanaka"],
         year=2024,
         title="Minimal Reference Test",
-        source_type="journal"
+        source_type="journal",
     )
 
 
@@ -151,6 +161,7 @@ def ieee_database():
 # =============================================================================
 # APA IN-TEXT CITATION TESTS
 # =============================================================================
+
 
 class TestAPAInTextCitations:
     """Test APA 7th edition in-text citation formatting."""
@@ -178,6 +189,7 @@ class TestAPAInTextCitations:
 # IEEE IN-TEXT CITATION TESTS
 # =============================================================================
 
+
 class TestIEEEInTextCitations:
     """Test IEEE numbered citation formatting."""
 
@@ -194,7 +206,7 @@ class TestIEEEInTextCitations:
             authors=["Test"],
             year=2023,
             title="Test Paper",
-            source_type="journal"
+            source_type="journal",
         )
         compiler = CitationCompiler(ieee_database)
         result = compiler.format_in_text_citation(citation)
@@ -204,6 +216,7 @@ class TestIEEEInTextCitations:
 # =============================================================================
 # APA REFERENCE FORMATTING TESTS
 # =============================================================================
+
 
 class TestAPAReferenceFormatting:
     """Test APA 7th edition reference list formatting."""
@@ -236,6 +249,7 @@ class TestAPAReferenceFormatting:
 # CHICAGO IN-TEXT CITATION TESTS
 # =============================================================================
 
+
 class TestChicagoInTextCitations:
     """Test Chicago Author-Date in-text citation formatting."""
 
@@ -264,6 +278,7 @@ class TestChicagoInTextCitations:
 # =============================================================================
 # MLA IN-TEXT CITATION TESTS
 # =============================================================================
+
 
 class TestMLAInTextCitations:
     """Test MLA 9th Edition in-text citation formatting."""
@@ -294,8 +309,8 @@ class TestMLAInTextCitations:
 # UNSUPPORTED STYLES TESTS
 # =============================================================================
 
-class TestUnsupportedStyles:
 
+class TestUnsupportedStyles:
     def test_unknown_style_raises_error(self, sample_citation_single_author):
         """Unknown style should raise NotImplementedError."""
         db = CitationDatabase(citations=[], citation_style="Harvard")
@@ -311,15 +326,34 @@ class TestUnsupportedStyles:
 # REFERENCE LIST GENERATION TESTS
 # =============================================================================
 
+
 class TestReferenceListGeneration:
     """Test full reference list generation."""
 
     def test_apa_reference_list_sorted(self, apa_database):
         """APA references should be sorted alphabetically by first author."""
         citations = [
-            Citation(citation_id="cite_001", authors=["Zebra"], year=2023, title="Z Paper", source_type="journal"),
-            Citation(citation_id="cite_002", authors=["Alpha"], year=2022, title="A Paper", source_type="journal"),
-            Citation(citation_id="cite_003", authors=["Middle"], year=2021, title="M Paper", source_type="journal"),
+            Citation(
+                citation_id="cite_001",
+                authors=["Zebra"],
+                year=2023,
+                title="Z Paper",
+                source_type="journal",
+            ),
+            Citation(
+                citation_id="cite_002",
+                authors=["Alpha"],
+                year=2022,
+                title="A Paper",
+                source_type="journal",
+            ),
+            Citation(
+                citation_id="cite_003",
+                authors=["Middle"],
+                year=2021,
+                title="M Paper",
+                source_type="journal",
+            ),
         ]
         db = CitationDatabase(citations=citations, citation_style="APA 7th")
         compiler = CitationCompiler(db)
@@ -340,6 +374,7 @@ class TestReferenceListGeneration:
 # IEEE REFERENCE FORMATTING TESTS
 # =============================================================================
 
+
 class TestIEEEReferenceFormatting:
     """Test IEEE reference list formatting."""
 
@@ -349,7 +384,7 @@ class TestIEEEReferenceFormatting:
         result = compiler._format_ieee_reference(sample_citation_single_author)
 
         assert result.startswith("[001]")
-        assert 'Smith.' in result
+        assert "Smith." in result
         assert '"Machine Learning Applications,"' in result
         assert "*Nature*" in result
         assert "vol. 45" in result
@@ -364,7 +399,7 @@ class TestIEEEReferenceFormatting:
             year=2023,
             title="Sparse Methods",
             source_type="journal",
-            journal="Computing Reviews"
+            journal="Computing Reviews",
         )
         compiler = CitationCompiler(ieee_database)
         result = compiler._format_ieee_reference(citation)
@@ -413,6 +448,7 @@ class TestIEEEReferenceFormatting:
 # APA REFERENCE FORMATTING — OTHER SOURCE TYPES
 # =============================================================================
 
+
 class TestAPAReferenceOtherTypes:
     """Test APA reference formatting for non-journal, non-book source types."""
 
@@ -450,7 +486,7 @@ class TestAPAReferenceOtherTypes:
             source_type="journal",
             journal="Open Science",
             volume=5,
-            url="https://openscience.org/article/123"
+            url="https://openscience.org/article/123",
         )
         compiler = CitationCompiler(apa_database)
         result = compiler._format_apa_reference(citation)
@@ -467,7 +503,7 @@ class TestAPAReferenceOtherTypes:
             title="Advanced Algorithms",
             source_type="book",
             publisher="MIT Press",
-            doi="10.7777/mitpress.2022.021"
+            doi="10.7777/mitpress.2022.021",
         )
         compiler = CitationCompiler(apa_database)
         result = compiler._format_apa_reference(citation)
@@ -480,6 +516,7 @@ class TestAPAReferenceOtherTypes:
 # =============================================================================
 # EDGE CASE TESTS
 # =============================================================================
+
 
 class TestEdgeCases:
     """Test edge cases and data quality regressions."""
@@ -509,7 +546,7 @@ class TestEdgeCases:
             year=2023,
             title="Missing Journal Field",
             source_type="journal",
-            journal=None
+            journal=None,
         )
         compiler = CitationCompiler(apa_database)
         result = compiler._format_apa_reference(citation)
@@ -527,7 +564,7 @@ class TestEdgeCases:
             year=2022,
             title="No Publisher Book",
             source_type="book",
-            publisher=None
+            publisher=None,
         )
         compiler = CitationCompiler(apa_database)
         result = compiler._format_apa_reference(citation)
@@ -546,7 +583,7 @@ class TestEdgeCases:
             source_type="journal",
             journal="Local Journal",
             volume=1,
-            pages="10-20"
+            pages="10-20",
         )
         compiler = CitationCompiler(apa_database)
         result = compiler._format_apa_reference(citation)
@@ -563,7 +600,7 @@ class TestEdgeCases:
             year=2024,
             title="Arxiv Preprint Paper",
             source_type="preprint",
-            doi="10.48550/arxiv.2024.033"
+            doi="10.48550/arxiv.2024.033",
         )
         compiler = CitationCompiler(apa_database)
         result = compiler._format_apa_reference(citation)
@@ -580,14 +617,14 @@ class TestEdgeCases:
             authors=["A"],
             year=2023,
             title="First",
-            source_type="journal"
+            source_type="journal",
         )
         cite_99 = Citation(
             citation_id="cite_099",
             authors=["Z"],
             year=2023,
             title="Last",
-            source_type="journal"
+            source_type="journal",
         )
         compiler = CitationCompiler(ieee_database)
 
@@ -598,6 +635,7 @@ class TestEdgeCases:
 # =============================================================================
 # CITATION COMPILATION TESTS
 # =============================================================================
+
 
 class TestCitationCompilation:
     """Test compile_citations() pipeline method."""
@@ -610,12 +648,19 @@ class TestCitationCompilation:
     def test_compile_replaces_single_citation(self):
         """{cite_001} -> (Smith, 2023) in APA."""
         citations = [
-            Citation(citation_id="cite_001", authors=["Smith"], year=2023,
-                     title="Test", source_type="journal")
+            Citation(
+                citation_id="cite_001",
+                authors=["Smith"],
+                year=2023,
+                title="Test",
+                source_type="journal",
+            )
         ]
         compiler = self._make_compiler(citations)
         text = "As shown {cite_001} this works."
-        result, missing, researched = compiler.compile_citations(text, research_missing=False, verbose=False)
+        result, missing, researched = compiler.compile_citations(
+            text, research_missing=False, verbose=False
+        )
 
         assert "(Smith, 2023)" in result
         assert "{cite_001}" not in result
@@ -624,10 +669,20 @@ class TestCitationCompilation:
     def test_compile_replaces_multiple_citations(self):
         """Two {cite_XXX} both replaced."""
         citations = [
-            Citation(citation_id="cite_001", authors=["Smith"], year=2023,
-                     title="Test A", source_type="journal"),
-            Citation(citation_id="cite_002", authors=["Jones"], year=2022,
-                     title="Test B", source_type="journal"),
+            Citation(
+                citation_id="cite_001",
+                authors=["Smith"],
+                year=2023,
+                title="Test A",
+                source_type="journal",
+            ),
+            Citation(
+                citation_id="cite_002",
+                authors=["Jones"],
+                year=2022,
+                title="Test B",
+                source_type="journal",
+            ),
         ]
         compiler = self._make_compiler(citations)
         text = "First {cite_001} and second {cite_002} here."
@@ -678,24 +733,30 @@ class TestCitationCompilation:
     def test_validate_clean_compilation(self):
         """validate_compilation() returns success: True when no markers remain."""
         citations = [
-            Citation(citation_id="cite_001", authors=["Smith"], year=2023,
-                     title="Test", source_type="journal")
+            Citation(
+                citation_id="cite_001",
+                authors=["Smith"],
+                year=2023,
+                title="Test",
+                source_type="journal",
+            )
         ]
         compiler = self._make_compiler(citations)
         original = "As shown {cite_001} this works."
         compiled, _, _ = compiler.compile_citations(original, research_missing=False, verbose=False)
 
         validation = compiler.validate_compilation(original, compiled)
-        assert validation['success'] is True
-        assert validation['issues'] == []
-        assert validation['total_citations'] == 1
-        assert validation['successfully_compiled'] == 1
-        assert validation['missing_citations'] == 0
+        assert validation["success"] is True
+        assert validation["issues"] == []
+        assert validation["total_citations"] == 1
+        assert validation["successfully_compiled"] == 1
+        assert validation["missing_citations"] == 0
 
 
 # =============================================================================
 # NALT FIXTURES
 # =============================================================================
+
 
 @pytest.fixture
 def nalt_database():
@@ -804,6 +865,7 @@ def sample_citation_treaty():
 # NALT IN-TEXT CITATION TESTS
 # =============================================================================
 
+
 class TestNALTInTextCitations:
     """Test NALT footnote marker generation."""
 
@@ -835,6 +897,7 @@ class TestNALTInTextCitations:
 # =============================================================================
 # NALT FOOTNOTE FORMATTING TESTS
 # =============================================================================
+
 
 class TestNALTFootnoteFormatting:
     """Test NALT footnote text formatting for each source type."""
@@ -923,6 +986,7 @@ class TestNALTFootnoteFormatting:
 # NALT AUTHOR FORMATTING TESTS
 # =============================================================================
 
+
 class TestNALTAuthorFormatting:
     """Test NALT author formatting rules."""
 
@@ -960,14 +1024,21 @@ class TestNALTAuthorFormatting:
 # NALT BIBLIOGRAPHY TESTS
 # =============================================================================
 
+
 class TestNALTBibliography:
     """Test NALT bibliography generation."""
 
     def test_bibliography_header(self):
         """NALT uses 'Bibliography' header, not 'References'."""
         citations = [
-            Citation(citation_id="cite_001", authors=["Smith"], year=2023,
-                     title="Test Book", source_type="book", publisher="Publisher"),
+            Citation(
+                citation_id="cite_001",
+                authors=["Smith"],
+                year=2023,
+                title="Test Book",
+                source_type="book",
+                publisher="Publisher",
+            ),
         ]
         db = CitationDatabase(citations=citations, citation_style="NALT")
         compiler = CitationCompiler(db)
@@ -979,10 +1050,22 @@ class TestNALTBibliography:
     def test_bibliography_alphabetical(self):
         """Bibliography entries sorted alphabetically by author."""
         citations = [
-            Citation(citation_id="cite_001", authors=["Zebra"], year=2023,
-                     title="Z Book", source_type="book", publisher="Pub"),
-            Citation(citation_id="cite_002", authors=["Alpha"], year=2022,
-                     title="A Book", source_type="book", publisher="Pub"),
+            Citation(
+                citation_id="cite_001",
+                authors=["Zebra"],
+                year=2023,
+                title="Z Book",
+                source_type="book",
+                publisher="Pub",
+            ),
+            Citation(
+                citation_id="cite_002",
+                authors=["Alpha"],
+                year=2022,
+                title="A Book",
+                source_type="book",
+                publisher="Pub",
+            ),
         ]
         db = CitationDatabase(citations=citations, citation_style="NALT")
         compiler = CitationCompiler(db)
@@ -997,6 +1080,7 @@ class TestNALTBibliography:
 # NALT COMPILATION TESTS
 # =============================================================================
 
+
 class TestNALTCompilation:
     """Test NALT full compilation pipeline."""
 
@@ -1007,8 +1091,14 @@ class TestNALTCompilation:
     def test_full_pipeline(self):
         """Compile replaces {cite_001} with [^1] and appends footnote definition."""
         citations = [
-            Citation(citation_id="cite_001", authors=["Nasir"], year=2000,
-                     title="Contract Law", source_type="book", publisher="Gbile"),
+            Citation(
+                citation_id="cite_001",
+                authors=["Nasir"],
+                year=2000,
+                title="Contract Law",
+                source_type="book",
+                publisher="Gbile",
+            ),
         ]
         compiler = self._make_compiler(citations)
         text = "As stated {cite_001} the law provides."
@@ -1023,11 +1113,24 @@ class TestNALTCompilation:
     def test_multiple_footnotes(self):
         """Multiple citations get sequential footnote numbers."""
         citations = [
-            Citation(citation_id="cite_001", authors=["Nasir"], year=2000,
-                     title="Contract Law", source_type="book", publisher="Gbile"),
-            Citation(citation_id="cite_002", authors=["Nwoke"], year=2005,
-                     title="Labour Law", source_type="journal", journal="JPL",
-                     volume=3, pages="40-51"),
+            Citation(
+                citation_id="cite_001",
+                authors=["Nasir"],
+                year=2000,
+                title="Contract Law",
+                source_type="book",
+                publisher="Gbile",
+            ),
+            Citation(
+                citation_id="cite_002",
+                authors=["Nwoke"],
+                year=2005,
+                title="Labour Law",
+                source_type="journal",
+                journal="JPL",
+                volume=3,
+                pages="40-51",
+            ),
         ]
         compiler = self._make_compiler(citations)
         text = "First {cite_001} and second {cite_002} here."
@@ -1042,17 +1145,27 @@ class TestNALTCompilation:
     def test_counter_reset(self):
         """Counter resets between compile_citations() calls."""
         citations = [
-            Citation(citation_id="cite_001", authors=["Nasir"], year=2000,
-                     title="Contract Law", source_type="book", publisher="Gbile"),
+            Citation(
+                citation_id="cite_001",
+                authors=["Nasir"],
+                year=2000,
+                title="Contract Law",
+                source_type="book",
+                publisher="Gbile",
+            ),
         ]
         compiler = self._make_compiler(citations)
 
         # First compilation
-        result1, _, _ = compiler.compile_citations("See {cite_001}.", research_missing=False, verbose=False)
+        result1, _, _ = compiler.compile_citations(
+            "See {cite_001}.", research_missing=False, verbose=False
+        )
         assert "[^1]" in result1
 
         # Second compilation - counter should reset
-        result2, _, _ = compiler.compile_citations("See {cite_001}.", research_missing=False, verbose=False)
+        result2, _, _ = compiler.compile_citations(
+            "See {cite_001}.", research_missing=False, verbose=False
+        )
         assert "[^1]" in result2
         # Should NOT have [^2] from previous run
         assert "[^2]" not in result2

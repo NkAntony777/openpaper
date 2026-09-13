@@ -1,8 +1,8 @@
 """Installation verification for OpenDraft."""
 
-import sys
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -69,9 +69,10 @@ def check_api_keys():
     if env_file.exists():
         print(f"   ℹ️  Found .env file: {env_file.absolute()}")
         from dotenv import load_dotenv
+
         load_dotenv()
     else:
-        print(f"   ⚠️  No .env file found (using system environment)")
+        print("   ⚠️  No .env file found (using system environment)")
 
     found_any = False
     for key, name in keys.items():
@@ -106,12 +107,7 @@ def check_pdf_engines():
 
     for cmd, name in engines:
         try:
-            result = subprocess.run(
-                [cmd, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            result = subprocess.run([cmd, "--version"], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
                 version = result.stdout.split("\n")[0][:50]
                 print(f"   ✅ {name}: {version}")

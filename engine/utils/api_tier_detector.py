@@ -4,11 +4,11 @@ ABOUTME: Automatic Gemini API tier detection with rate limit discovery
 ABOUTME: Detects free tier (10 RPM), paid tier (2,000 RPM), or custom limits via test requests
 """
 
+import json
 import os
 import time
-from typing import Literal, Optional, Dict, Tuple
 from pathlib import Path
-import json
+from typing import Dict, Literal, Optional, Tuple
 
 from google import genai
 
@@ -143,13 +143,13 @@ class APITierDetector:
                 try:
                     # Minimal request to test rate limiting
                     client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model="gemini-2.5-flash",
                         contents="Say OK",
                         config={"max_output_tokens": 5},
                     )
 
                     if verbose:
-                        print(f"    Request {i+1}/{request_count}: ✅ Success")
+                        print(f"    Request {i + 1}/{request_count}: ✅ Success")
 
                     # Wait 2 seconds before next request (30 RPM pace)
                     if i < request_count - 1:
@@ -161,12 +161,12 @@ class APITierDetector:
                     # Check for rate limit error
                     if "429" in error_msg or "quota" in error_msg or "rate" in error_msg:
                         if verbose:
-                            print(f"    Request {i+1}/{request_count}: ⚠️  Rate limit hit")
+                            print(f"    Request {i + 1}/{request_count}: ⚠️  Rate limit hit")
                         return ("free", 10)  # Definitely free tier
                     else:
                         # Other error - assume free tier to be safe
                         if verbose:
-                            print(f"    Request {i+1}/{request_count}: ❌ Error: {e}")
+                            print(f"    Request {i + 1}/{request_count}: ❌ Error: {e}")
                         return ("free", 10)
 
             elapsed = time.time() - start_time
@@ -186,7 +186,7 @@ class APITierDetector:
             # Error during detection - default to free tier (safe)
             if verbose:
                 print(f"  ⚠️  Detection error: {e}")
-                print(f"  Defaulting to FREE TIER for safety")
+                print("  Defaulting to FREE TIER for safety")
             return ("free", 10)
 
     def _load_cache(self) -> Optional[Dict]:
@@ -195,7 +195,7 @@ class APITierDetector:
             return None
 
         try:
-            with open(self.CACHE_FILE, 'r') as f:
+            with open(self.CACHE_FILE, "r") as f:
                 cached = json.load(f)
 
             # Check if cache is still valid
@@ -227,7 +227,7 @@ class APITierDetector:
         }
 
         try:
-            with open(self.CACHE_FILE, 'w') as f:
+            with open(self.CACHE_FILE, "w") as f:
                 json.dump(cache_data, f, indent=2)
         except Exception as e:
             # Cache write failure is non-critical
@@ -235,7 +235,9 @@ class APITierDetector:
 
 
 # Convenience function for simple usage
-def detect_api_tier(verbose: bool = True, force_detect: bool = False) -> Literal["free", "paid", "custom"]:
+def detect_api_tier(
+    verbose: bool = True, force_detect: bool = False
+) -> Literal["free", "paid", "custom"]:
     """
     Detect Gemini API tier.
 
@@ -300,14 +302,14 @@ if __name__ == "__main__":
     print(f"Rate Limit: {rpm} RPM")
 
     # Print recommended settings
-    print(f"\nRecommended Settings:")
+    print("\nRecommended Settings:")
     if tier == "free":
-        print(f"  rate_limit_delay: 7 seconds (safe for 10 RPM)")
-        print(f"  crafter_parallel: False (would exceed rate limit)")
-        print(f"  scout_batch_delay: 5.0 seconds")
+        print("  rate_limit_delay: 7 seconds (safe for 10 RPM)")
+        print("  crafter_parallel: False (would exceed rate limit)")
+        print("  scout_batch_delay: 5.0 seconds")
     elif tier == "paid":
-        print(f"  rate_limit_delay: 0.3 seconds (safe for 2,000 RPM)")
-        print(f"  crafter_parallel: True (6 sections concurrently)")
-        print(f"  scout_batch_delay: 1.0 seconds")
+        print("  rate_limit_delay: 0.3 seconds (safe for 2,000 RPM)")
+        print("  crafter_parallel: True (6 sections concurrently)")
+        print("  scout_batch_delay: 1.0 seconds")
 
     print(f"\nTo override: export GEMINI_API_TIER={tier}")

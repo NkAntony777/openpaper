@@ -42,7 +42,7 @@ def read_document(file_path: Path, max_chars: Optional[int] = None) -> str:
         try:
             text = file_path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            raise ValueError(f"Unsupported file type: {suffix}")
+            raise ValueError(f"Unsupported file type: {suffix}") from None
 
     if max_chars and len(text) > max_chars:
         text = text[:max_chars]

@@ -4,8 +4,8 @@ ABOUTME: ElevenLabs text-to-speech integration for digest audio
 ABOUTME: Converts narration scripts to MP3 audio files
 """
 
-import os
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
