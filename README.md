@@ -3,36 +3,12 @@
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Quality Gates](https://github.com/NkAntony777/openpaper/actions/workflows/quality.yml/badge.svg)](https://github.com/NkAntony777/openpaper/actions/workflows/quality.yml)
-[![Built on OpenDraft](https://img.shields.io/badge/Built%20on-OpenDraft-orange)](https://github.com/federicodeponte/opendraft)
 
-> An agent-native academic writing harness, built on [OpenDraft](https://github.com/federicodeponte/opendraft) and rebuilt around one idea: **the model is the orchestrator, tools are the capabilities, disk is the truth.**
+> An agent-native academic writing harness, rebuilt around one idea: **the model is the orchestrator, tools are the capabilities, disk is the truth.**
 
 OpenPaper turns paper writing into a tool-use loop: an agent (driven by [pi](https://github.com/earendil-works/pi) in RPC mode) reads research material, searches literature, writes sections, scores its own draft against structured quality gates, and revises — with guardrails that make hallucinated citations structurally impossible and a budget breaker that keeps runs bounded.
 
----
-
-## What changed vs OpenDraft
-
-OpenDraft runs a **fixed 19-agent pipeline** (research → structure → compose → QA → export). Its quality gates *report* problems into markdown files for humans; they never *act* on them — the backend "writes the draft and ships it". OpenPaper replaces the orchestration with an agent loop over a small set of solid tools, and closes the quality feedback loop:
-
-| Area | OpenDraft | OpenPaper |
-|---|---|---|
-| Orchestration | Fixed phase pipeline, 19 agents, 7 phases | Agent loop + tools; the model decides the next step (evaluator-optimizer) |
-| Quality feedback | Score/warning only — no rewrite path | Structured issues `{section, metric, actual, target, severity}` fed back to the model, which revises and re-scores until clean |
-| Citation safety | LLM fallback disabled, but no write-time check | **Whitelist guardrail**: `write_section` rejects any `cite_XXX` not in `research/bibliography.json` — hallucinated citations can't reach disk |
-| Tool surface | None for agents (phases only callable as coarse API stubs) | 9 composable tools behind a machine-readable `opendraft tool` CLI contract |
-| Long-run safety | Checkpoint/resume per phase | + budget breaker (cost/turns/wall-clock → steer → abort → process-tree kill), append-only run journal |
-| Writing context | ~3k-char prompt stuffing per section | `AGENTS.md` paper map + on-demand artifact reads (context is a cache; disk is the truth) |
-| Headless operation | Interactive CLI + UIs | Unattended RPC driver: extension isolation, UI dialogs auto-cancelled, no shell by default |
-| Codebase | 2.5k-line orchestrator god object + 19 prompts + 2 UIs + 36 utils | Tool layer + harness ≈ 2.7k lines total; ~96 pipeline files retired |
-
-Bug fixes and refactors on top of OpenDraft's foundation:
-
-- **Reference-list ordering bug**: `generate_reference_list` ran before `compile_citations`, so auto-researched `{cite_MISSING}` citations never reached the bibliography (new `CitationCompiler.generate_reference_list_for_ids`, regression-tested)
-- **Quality gate refactor**: `score_draft_quality(ctx)` split into a pure `score_texts()` core emitting structured diagnostics; the old ctx-based API delegates unchanged
-- Version aligned (CLI reported a stale version), packaging fixed (`harness*` included)
-
-Everything OpenDraft built that matters is kept and reused: the citation API cascade (Semantic Scholar / Crossref / OpenAlex / Serper / Gemini-grounded), the citation database + compiler, the web-grounded fact-check verifier, the revise channel with circuit breaker, and the Pandoc export chain.
+Want to drive the same workflow from **your own** harness with your subscription instead? See the sibling repo [openpaper-cli](https://github.com/NkAntony777/openpaper-cli).
 
 ---
 
@@ -104,7 +80,7 @@ A ready-made research fixture for trying things out: `scripts/make_poc_fixture.p
 | Env | Meaning |
 |---|---|
 | `PI_MODEL` / `--model` | pi model pattern (default `minimax-cn/MiniMax-M3`) |
-| `PI_BIN` | pi executable (default `E:\npm-global\pi.cmd`; override anywhere else) |
+| `PI_BIN` | pi executable (default: resolved from `PATH`; override with an absolute path if needed) |
 | `OPENAI_API_KEY` + `OPENAI_BASE_URL` | OpenAI-compatible backend for OpenDraft's own LLM calls (revise, abstract, verifier) |
 | `MINIMAX_API_KEY` / `MINIMAX_CN_API_KEY` | pi's native MiniMax provider keys (the driver auto-maps `OPENAI_API_KEY`) |
 | `GOOGLE_API_KEY` | needed only for `verify_claims` (Gemini-grounded search) |
@@ -112,10 +88,10 @@ A ready-made research fixture for trying things out: `scripts/make_poc_fixture.p
 ## Testing
 
 ```bash
-pytest tests/ -q        # 580+ offline tests; no network, no LLM calls
+pytest tests/ -q        # 620+ offline tests; no network, no LLM calls
 ```
 
-Every layer is testable without pi or a model: the driver's event loop takes injected `next_line`/`send`/`clock`, so budget escalation, UI-dialog handling, and journal behavior run against canned JSONL. The pi extension (`opendraft-tools.ts`) has its own offline smoke test (`tests/ts_extension_smoke.mjs`, 24 assertions: tool registration, spawn argv, envelope error model, `.cmd` rejection, compaction fallback) wired into pytest. CI additionally runs the gold-fixture eval gates on every push.
+Every layer is testable without pi or a model: the driver's event loop takes injected `next_line`/`send`/`clock`, so budget escalation, UI-dialog handling, and journal behavior run against canned JSONL. The pi extension (`opendraft-tools.ts`) has its own offline smoke test (`tests/ts_extension_smoke.mjs`, 24 assertions: tool registration, spawn argv, envelope error model, `.cmd` rejection, compaction fallback) wired into pytest — plus a **schema-parity test** that compares every tool's TypeBox schema against the Python `INPUT_SCHEMA`, so the two definitions cannot drift silently. CI installs the pi packages and runs the TS smoke + parity **on Linux**, not only on the dev box. `ruff check` + `ruff format --check` gate every push.
 
 ## Roadmap
 
@@ -130,4 +106,4 @@ See [docs/AGENT_HARNESS_DESIGN.md](docs/AGENT_HARNESS_DESIGN.md) for the full de
 
 ## Credits & license
 
-OpenPaper is built on [OpenDraft](https://github.com/federicodeponte/opendraft) by Federico De Ponte (MIT). The agent底座 is [pi](https://github.com/earendil-works/pi) by Mario Zechner / Earendil (MIT). MIT License.
+Continues the work of [OpenDraft](https://github.com/federicodeponte/opendraft) by Federico De Ponte (MIT); agent 底座 [pi](https://github.com/earendil-works/pi) by Mario Zechner / Earendil (MIT). MIT License.
